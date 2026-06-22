@@ -1,0 +1,12 @@
+{
+  "name": "pi-manager",
+  "version": "1.0.0",
+  "description": "Plugin manager for the pi agent harness",
+  "keywords": ["pi-package"],
+  "author": "Wyatt Ferguson",
+  "license": "MIT",
+  "pi": {
+    "extensions": ["./extensions"],
+    "skills": ["./skills"]
+  }
+}
