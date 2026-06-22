@@ -1,0 +1,6 @@
+.git/
+.gitignore
+.npmignore
+tests.js
+node_modules/
+.pi/

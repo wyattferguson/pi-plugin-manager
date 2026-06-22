@@ -1,2 +1,14 @@
 node_modules/
 .pi/
+
+# Build artifacts
+target/
+dist/
+build/
+out/
+
+# Compiled TypeScript
+*.js
+*.js.map
+*.d.ts
+!scripts/download-grammars.js

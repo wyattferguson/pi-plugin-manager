@@ -1,12 +1,65 @@
 {
   "name": "pi-manager",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Plugin manager for the pi agent harness",
-  "keywords": ["pi-package"],
+  "keywords": [
+    "pi-package"
+  ],
   "author": "Wyatt Ferguson",
   "license": "MIT",
+  "files": [
+    "extensions/",
+    "skills/",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "bun run typecheck && bun run lint && bun test",
+    "test": "bun test",
+    "lint": "xo",
+    "typecheck": "bun run tsc --noEmit",
+    "prepublishOnly": "bun run build"
+  },
   "pi": {
-    "extensions": ["./extensions"],
-    "skills": ["./skills"]
+    "extensions": [
+      "./extensions"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "xo": "^3.0.2"
+  },
+  "xo": {
+    "prettier": true,
+    "space": 2,
+    "semicolon": true,
+    "ignores": [],
+    "rules": {
+      "@typescript-eslint/naming-convention": "off",
+      "@typescript-eslint/no-empty-function": "off",
+      "@typescript-eslint/strict-boolean-expressions": "off",
+      "@typescript-eslint/prefer-nullish-coalescing": "off",
+      "@typescript-eslint/strict-void-return": "off",
+      "unicorn/consistent-class-member-order": "off",
+      "unicorn/no-immediate-mutation": "off",
+      "unicorn/prefer-single-call": "off",
+      "unicorn/max-nested-calls": "off",
+      "unicorn/prefer-code-point": "off",
+      "unicorn/prefer-ternary": "off",
+      "unicorn/prefer-else-if": "off",
+      "unicorn/no-duplicate-loops": "off",
+      "unicorn/no-array-sort": "off",
+      "unicorn/no-anonymous-default-export": "off",
+      "unicorn/prefer-string-raw": "off",
+      "import-x/no-anonymous-default-export": "off",
+      "n/prefer-global/process": "off",
+      "no-await-in-loop": "off",
+      "require-unicode-regexp": "off",
+      "regexp/prefer-named-capture-group": "off",
+      "regexp/no-unused-capturing-group": "off"
+    }
   }
 }
