@@ -332,7 +332,7 @@ export async function searchCatalog(
   signal?: AbortSignal,
 ): Promise<SearchResult[]> {
   const trimmed = query.trim();
-  const q = trimmed ? `keywords:pi-package+${encodeURIComponent(trimmed)}` : "keywords:pi-package";
+  const q = trimmed ? `keywords:pi-package ${encodeURIComponent(trimmed)}` : "keywords:pi-package";
 
   // Check cache for empty/popular query
   if (!trimmed) {
@@ -343,7 +343,7 @@ export async function searchCatalog(
     }
   }
 
-  const url = `https://registry.npmjs.org/-/v1/search?text=${q}&size=${size}`;
+  const url = `https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(q)}&size=${size}`;
   const effectiveSignal = signal ?? AbortSignal.timeout(8000);
   try {
     const resp = await fetch(url, { signal: effectiveSignal });

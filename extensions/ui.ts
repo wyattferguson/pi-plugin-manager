@@ -19,7 +19,6 @@ import {
   updateAllExtensionsAsync,
   resolveInstalledVersion,
   fetchPackageDetails,
-  fetchPackageVersions,
   getCachedDescription,
 } from "./packages";
 import type { Package, SearchResult, PackageDetails, VersionInfo } from "./types";
@@ -267,16 +266,6 @@ export class ManagerUI {
       return;
     }
 
-    if (data === "v" || data === "V") {
-      void this.#showVersions();
-      return;
-    }
-
-    if (data === "i" || data === "I") {
-      void this.#showSearchDetails();
-      return;
-    }
-
     if (matchesKey(data, "backspace")) {
       if (this.searchQuery.length > 0) {
         this.searchQuery = this.searchQuery.slice(0, -1);
@@ -412,27 +401,6 @@ export class ManagerUI {
     this.invalidate();
     try {
       this.details = await fetchPackageDetails(pkg.name);
-    } catch {
-      this.details = undefined;
-    }
-
-    this.detailsLoading = false;
-    this.invalidate();
-    this.requestRender();
-  }
-
-  async #showSearchDetails(): Promise<void> {
-    const idx = this.#selectedIndex(this.searchList);
-    const result = this.searchResults[idx];
-    if (!result) {
-      return;
-    }
-
-    this.detailsLoading = true;
-    this.view = "details";
-    this.invalidate();
-    try {
-      this.details = await fetchPackageDetails(result.npmPackage);
     } catch {
       this.details = undefined;
     }
@@ -627,37 +595,6 @@ export class ManagerUI {
     this.requestRender();
   }
 
-  async #showVersions(): Promise<void> {
-    const idx = this.#selectedIndex(this.searchList);
-    const result = this.searchResults[idx];
-    if (!result) {
-      return;
-    }
-
-    this.view = "versions";
-    this.detailsLoading = true;
-    this.invalidate();
-    try {
-      this.versions = await fetchPackageVersions(result.npmPackage);
-      this.versionList = this.#buildVersionList();
-    } catch {
-      this.versions = [];
-    }
-
-    this.detailsLoading = false;
-    this.invalidate();
-    this.requestRender();
-  }
-
-  #buildVersionList(): SelectList {
-    const items: SelectItem[] = this.versions.map((v) => ({
-      value: v.version,
-      label: v.version,
-      description: "",
-    }));
-    return new SelectList(items, Math.min(items.length + 2, 20), this.selectListTheme());
-  }
-
   // ── Page up/down ──────────────────────────────────────────────────────────
 
   #pageUp(tab: Tab): void {
@@ -803,8 +740,6 @@ export class ManagerUI {
       this.#keyHint("type", "search"),
       this.#keyHint("↑↓", "navigate"),
       this.#keyHint("enter", "install"),
-      this.#keyHint("v", "versions"),
-      this.#keyHint("i", "details"),
       this.#keyHint("tab", "installed"),
       this.#keyHint("esc", "close"),
     ].join("  ");
