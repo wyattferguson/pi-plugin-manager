@@ -1,7 +1,7 @@
 /**
  Pi-plugin-manager — Plugin manager TUI for the Pi coding agent harness.
 
- Provides the `/manage` command which opens a terminal UI to list, install,
+ Provides the `/plugins` command which opens a terminal UI to list, install,
  remove, and update Pi packages. Supports two tabs:
  - Installed: browse/remove installed packages with version info
  - Search: search the npm registry for `pi-package`-tagged packages
@@ -9,16 +9,10 @@
  @module pi-plugin-manager/ui
  */
 
-import {
-  type SelectItem,
-  SelectList,
-  matchesKey,
-  truncateToWidth,
-} from '@earendil-works/pi-tui';
+import { type SelectItem, SelectList, matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
 import {
   loadPackages,
   checkNpmUpdates,
-  checkGitUpdates,
   searchCatalog,
   installPackageAsync,
   removePackageAsync,
@@ -27,42 +21,38 @@ import {
   fetchPackageDetails,
   fetchPackageVersions,
   getCachedDescription,
-} from './packages';
-import type {
-  Package,
-  SearchResult,
-  Theme,
-  PackageDetails,
-  VersionInfo,
-} from './types';
+} from "./packages";
+import type { Package, SearchResult, Theme, PackageDetails, VersionInfo } from "./types";
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
-type Tab = 'installed' | 'search';
-type View = 'list' | 'confirm' | 'details' | 'versions';
+type Tab = "installed" | "search";
+type View = "list" | "confirm" | "details" | "versions";
 
 // ── ManagerUI ───────────────────────────────────────────────────────────────
 
 export class ManagerUI {
   // Core state
-  private tab: Tab = 'installed';
-  private view: View = 'list';
+  private tab: Tab = "installed";
+  private view: View = "list";
   private installedPkgs: Package[] = [];
+  private readonly screenHeight: number;
   private filteredPkgs: Package[] = [];
   private searchResults: SearchResult[] = [];
-  private searchQuery = '';
-  private installedFilter = '';
+  private searchQuery = "";
+
   private searchLoading = false;
-  private statusMsg = '';
-  private statusIcon = '';
-  private statusType: 'info' | 'error' | 'success' = 'info';
+  private statusMsg = "";
+  private statusIcon = "";
+  private statusType: "info" | "error" | "success" = "info";
   private busy = false;
   private hasUpdates = false;
-  private updatingSource = '';
+  private updatingSource = "";
   private checkingVersions = true;
+  private readonly justUpdatedSources = new Set<string>();
 
   // Confirmation state
-  private confirmTarget = '';
+  private confirmTarget = "";
 
   // Details / versions
   private details: PackageDetails | undefined;
@@ -83,12 +73,15 @@ export class ManagerUI {
   private requestRender: () => void;
 
   public onClose?: () => void;
+  /** Whether any install/remove/update was performed this session. */
+  changed = false;
 
-  constructor(pkgs: Package[]) {
+  constructor(pkgs: Package[], screenHeight?: number) {
     this.installedPkgs = pkgs;
     this.requestRender = () => {};
     this.hasUpdates = pkgs.some((p) => p.hasUpdate);
     this.statusMsg = `${pkgs.length} packages installed`;
+    this.screenHeight = screenHeight ?? 30;
   }
 
   setRequestRender(fn: () => void): void {
@@ -127,11 +120,11 @@ export class ManagerUI {
 
   private selectListTheme() {
     return {
-      selectedPrefix: (t: string) => this.fg('accent', t),
-      selectedText: (t: string) => this.fg('accent', t),
-      description: (t: string) => this.fg('muted', t),
-      scrollInfo: (t: string) => this.fg('dim', t),
-      noMatch: (t: string) => this.fg('warning', t),
+      selectedPrefix: (t: string) => this.fg("accent", t),
+      selectedText: (t: string) => this.fg("accent", t),
+      description: (t: string) => this.fg("muted", t),
+      scrollInfo: (t: string) => this.fg("dim", t),
+      noMatch: (t: string) => this.fg("warning", t),
     };
   }
 
@@ -150,9 +143,9 @@ export class ManagerUI {
   }
 
   #dispatchInput(data: string): void {
-    if (matchesKey(data, 'escape')) {
-      if (this.view !== 'list') {
-        this.view = 'list';
+    if (matchesKey(data, "escape")) {
+      if (this.view !== "list") {
+        this.view = "list";
         this.invalidate();
         return;
       }
@@ -161,39 +154,39 @@ export class ManagerUI {
       return;
     }
 
-    if (this.view === 'confirm') {
+    if (this.view === "confirm") {
       this.#handleConfirmInput(data);
       return;
     }
 
-    if (this.view === 'details') {
+    if (this.view === "details") {
       // R/del/enter on details view triggers remove if viewing installed package
       if (
-        this.tab === 'installed' &&
-        (matchesKey(data, 'r') ||
-          data === 'R' ||
-          matchesKey(data, 'enter') ||
-          matchesKey(data, 'delete') ||
-          data === 'd' ||
-          data === 'D')
+        this.tab === "installed" &&
+        (matchesKey(data, "r") ||
+          data === "R" ||
+          matchesKey(data, "enter") ||
+          matchesKey(data, "delete") ||
+          data === "d" ||
+          data === "D")
       ) {
-        this.view = 'list';
+        this.view = "list";
         this.#confirmRemove();
         return;
       }
 
-      this.view = 'list';
+      this.view = "list";
       this.invalidate();
       this.requestRender();
       return;
     }
 
-    if (this.view === 'versions') {
+    if (this.view === "versions") {
       this.#handleVersionInput(data);
       return;
     }
 
-    if (this.tab === 'installed') {
+    if (this.tab === "installed") {
       this.#handleInstalledInput(data);
     } else {
       this.#handleSearchInput(data);
@@ -202,16 +195,15 @@ export class ManagerUI {
 
   // ── Installed tab input ───────────────────────────────────────────────────
 
-  // eslint-disable-next-line complexity
   #handleInstalledInput(data: string): void {
     // Global keys
-    if (data === 'u' || data === 'U') {
+    if (data === "u" || data === "U") {
       void this.#updateAll();
       return;
     }
 
-    if (matchesKey(data, 'tab') || data === '\t') {
-      this.tab = 'search';
+    if (matchesKey(data, "tab") || data === "\t") {
+      this.tab = "search";
       if (this.searchResults.length === 0 && !this.searchQuery) {
         void this.#doSearch();
       }
@@ -222,42 +214,31 @@ export class ManagerUI {
 
     // Remove
     if (
-      matchesKey(data, 'enter') ||
-      data === 'r' ||
-      data === 'R' ||
-      data === 'd' ||
-      data === 'D' ||
-      matchesKey(data, 'delete')
+      matchesKey(data, "enter") ||
+      data === "r" ||
+      data === "R" ||
+      data === "d" ||
+      data === "D" ||
+      matchesKey(data, "delete")
     ) {
       this.#confirmRemove();
       return;
     }
 
     // Details
-    if (data === 'i' || data === 'I') {
+    if (data === "i" || data === "I") {
       void this.#showDetails();
       return;
     }
 
-    // Filter typing
-    if (matchesKey(data, 'backspace')) {
-      if (this.installedFilter.length > 0) {
-        this.installedFilter = this.installedFilter.slice(0, -1);
-        this.installedList = this.#buildInstalledList();
-        this.invalidate();
-      }
-
+    // Page up/down
+    if (matchesKey(data, "pageUp")) {
+      this.#pageUp("installed");
       return;
     }
 
-    if (
-      data.length === 1 &&
-      data.charCodeAt(0) >= 32 &&
-      data.charCodeAt(0) < 127
-    ) {
-      this.installedFilter += data;
-      this.installedList = this.#buildInstalledList();
-      this.invalidate();
+    if (matchesKey(data, "pageDown")) {
+      this.#pageDown("installed");
       return;
     }
 
@@ -269,28 +250,28 @@ export class ManagerUI {
   // ── Search tab input ──────────────────────────────────────────────────────
 
   #handleSearchInput(data: string): void {
-    if (matchesKey(data, 'tab') || data === '\t') {
-      this.tab = 'installed';
+    if (matchesKey(data, "tab") || data === "\t") {
+      this.tab = "installed";
       this.invalidate();
       return;
     }
 
-    if (matchesKey(data, 'enter')) {
+    if (matchesKey(data, "enter")) {
       void this.#installSelected();
       return;
     }
 
-    if (data === 'v' || data === 'V') {
+    if (data === "v" || data === "V") {
       void this.#showVersions();
       return;
     }
 
-    if (data === 'i' || data === 'I') {
+    if (data === "i" || data === "I") {
       void this.#showSearchDetails();
       return;
     }
 
-    if (matchesKey(data, 'backspace')) {
+    if (matchesKey(data, "backspace")) {
       if (this.searchQuery.length > 0) {
         this.searchQuery = this.searchQuery.slice(0, -1);
         this.#debounceSearch();
@@ -300,14 +281,21 @@ export class ManagerUI {
       return;
     }
 
-    if (
-      data.length === 1 &&
-      data.charCodeAt(0) >= 32 &&
-      data.charCodeAt(0) < 127
-    ) {
+    if (data.length === 1 && data.charCodeAt(0) >= 32 && data.charCodeAt(0) < 127) {
       this.searchQuery += data;
       this.#debounceSearch();
       this.invalidate();
+      return;
+    }
+
+    // Page up/down
+    if (matchesKey(data, "pageUp")) {
+      this.#pageUp("search");
+      return;
+    }
+
+    if (matchesKey(data, "pageDown")) {
+      this.#pageDown("search");
       return;
     }
 
@@ -318,15 +306,15 @@ export class ManagerUI {
   // ── Confirmation dialog ───────────────────────────────────────────────────
 
   #handleConfirmInput(data: string): void {
-    if (data === 'y' || data === 'Y' || matchesKey(data, 'enter')) {
+    if (data === "y" || data === "Y" || matchesKey(data, "enter")) {
       void this.#executeConfirm();
       return;
     }
 
-    if (data === 'n' || data === 'N' || matchesKey(data, 'escape')) {
-      this.view = 'list';
-      this.statusMsg = 'Cancelled';
-      this.statusType = 'info';
+    if (data === "n" || data === "N" || matchesKey(data, "escape")) {
+      this.view = "list";
+      this.statusMsg = "Cancelled";
+      this.statusType = "info";
       this.invalidate();
     }
   }
@@ -339,19 +327,19 @@ export class ManagerUI {
     }
 
     this.confirmTarget = pkg.name;
-    this.view = 'confirm';
+    this.view = "confirm";
     this.invalidate();
   }
 
   async #executeConfirm(): Promise<void> {
-    this.view = 'list';
+    this.view = "list";
     await this.#removeSelected();
   }
 
   // ── Version picker ────────────────────────────────────────────────────────
 
   #handleVersionInput(data: string): void {
-    if (matchesKey(data, 'enter')) {
+    if (matchesKey(data, "enter")) {
       const idx = this.versionList?.selectedIndex ?? 0;
       const ver = this.versions[idx];
       if (ver) {
@@ -367,7 +355,7 @@ export class ManagerUI {
   }
 
   async #installVersion(version: string): Promise<void> {
-    this.view = 'list';
+    this.view = "list";
     const idx = this.searchList?.selectedIndex ?? 0;
     const result = this.searchResults[idx];
     if (!result) {
@@ -380,17 +368,18 @@ export class ManagerUI {
     try {
       await installPackageAsync(`npm:${result.npmPackage}@${version}`);
       clearInterval(spinner);
-      this.statusIcon = '✓';
+      this.statusIcon = "✓";
       this.statusMsg = `Installed ${result.name}@${version}`;
-      this.statusType = 'success';
+      this.statusType = "success";
+      this.changed = true;
       this.installedPkgs = loadPackages();
       await checkNpmUpdates(this.installedPkgs);
       this.installedList = this.#buildInstalledList();
     } catch (error) {
       clearInterval(spinner);
-      this.statusIcon = '✗';
+      this.statusIcon = "✗";
       this.statusMsg = `Failed: ${String(error).slice(0, 80)}`;
-      this.statusType = 'error';
+      this.statusType = "error";
     }
 
     this.busy = false;
@@ -403,12 +392,12 @@ export class ManagerUI {
   async #showDetails(): Promise<void> {
     const idx = this.installedList?.selectedIndex ?? 0;
     const pkg = this.filteredPkgs[idx];
-    if (pkg?.type !== 'npm') {
+    if (pkg?.type !== "npm") {
       return;
     }
 
     this.detailsLoading = true;
-    this.view = 'details';
+    this.view = "details";
     this.invalidate();
     try {
       this.details = await fetchPackageDetails(pkg.name);
@@ -429,7 +418,7 @@ export class ManagerUI {
     }
 
     this.detailsLoading = true;
-    this.view = 'details';
+    this.view = "details";
     this.invalidate();
     try {
       this.details = await fetchPackageDetails(result.npmPackage);
@@ -461,21 +450,21 @@ export class ManagerUI {
   async #doSearch(): Promise<void> {
     this.#searchAbort?.abort();
     this.#searchAbort = new AbortController();
-    const {signal} = this.#searchAbort;
+    const { signal } = this.#searchAbort;
     this.searchLoading = true;
     this.invalidate();
     try {
       this.searchResults = await searchCatalog(this.searchQuery, 20, signal);
       this.searchList = this.#buildSearchList();
       this.statusMsg = `${this.searchResults.length} results`;
-      this.statusType = 'info';
+      this.statusType = "info";
     } catch (error) {
-      if ((error as Error).name === 'AbortError') {
+      if ((error as Error).name === "AbortError") {
         return;
       }
 
-      this.statusMsg = 'Search failed';
-      this.statusType = 'error';
+      this.statusMsg = "Search failed";
+      this.statusType = "error";
     }
 
     this.searchLoading = false;
@@ -487,18 +476,18 @@ export class ManagerUI {
 
   /** Start a spinner animation on the notification box. Returns the interval handle. */
   #startSpinner(text: string): ReturnType<typeof setInterval> {
-    const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+    const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
     let i = 0;
     // Show first frame immediately
     this.statusIcon = frames[0];
     this.statusMsg = text;
-    this.statusType = 'info';
+    this.statusType = "info";
     this.invalidate();
     this.requestRender();
     return setInterval(() => {
       i = (i + 1) % frames.length;
       this.statusIcon = frames[i];
-      this.statusType = 'info';
+      this.statusType = "info";
       this.invalidate();
       this.requestRender();
     }, 120);
@@ -521,18 +510,17 @@ export class ManagerUI {
     try {
       await removePackageAsync(pkg.source);
       clearInterval(spinner);
-      this.installedPkgs = this.installedPkgs.filter(
-        (p) => p.source !== pkg.source,
-      );
+      this.installedPkgs = this.installedPkgs.filter((p) => p.source !== pkg.source);
       this.installedList = this.#buildInstalledList();
-      this.statusIcon = '✓';
+      this.statusIcon = "✓";
       this.statusMsg = `Removed ${pkg.name}`;
-      this.statusType = 'success';
+      this.statusType = "success";
+      this.changed = true;
     } catch (error) {
       clearInterval(spinner);
-      this.statusIcon = '✗';
+      this.statusIcon = "✗";
       this.statusMsg = `Failed: ${String(error).slice(0, 80)}`;
-      this.statusType = 'error';
+      this.statusType = "error";
     }
 
     this.busy = false;
@@ -559,26 +547,25 @@ export class ManagerUI {
       return;
     }
 
-    const source = version
-      ? `npm:${result.npmPackage}@${version}`
-      : `npm:${result.npmPackage}`;
+    const source = version ? `npm:${result.npmPackage}@${version}` : `npm:${result.npmPackage}`;
     this.busy = true;
     const spinner = this.#startSpinner(`Installing ${result.name}`);
 
     try {
       await installPackageAsync(source);
       clearInterval(spinner);
-      this.statusIcon = '✓';
+      this.statusIcon = "✓";
       this.statusMsg = `Installed ${result.name}`;
-      this.statusType = 'success';
+      this.statusType = "success";
+      this.changed = true;
       this.installedPkgs = loadPackages();
       await checkNpmUpdates(this.installedPkgs);
       this.installedList = this.#buildInstalledList();
     } catch (error) {
       clearInterval(spinner);
-      this.statusIcon = '✗';
+      this.statusIcon = "✗";
       this.statusMsg = `Failed: ${String(error).slice(0, 80)}`;
-      this.statusType = 'error';
+      this.statusType = "error";
     }
 
     this.busy = false;
@@ -592,25 +579,36 @@ export class ManagerUI {
     }
 
     this.busy = true;
-    this.updatingSource = '*';
-    const spinner = this.#startSpinner('Updating all packages');
+    this.updatingSource = "*";
+    const spinner = this.#startSpinner("Updating all packages");
 
     try {
       await updateAllExtensionsAsync();
       clearInterval(spinner);
-      this.updatingSource = '';
+      this.updatingSource = "";
       this.installedPkgs = loadPackages();
       await checkNpmUpdates(this.installedPkgs);
+      for (const p of this.installedPkgs) {
+        this.justUpdatedSources.add(p.source);
+      }
+
+      // Auto-clear after 8 seconds or on next filter change
+      setTimeout(() => {
+        this.justUpdatedSources.clear();
+        this.invalidate();
+        this.requestRender();
+      }, 8000);
       this.installedList = this.#buildInstalledList();
-      this.statusIcon = '✓';
-      this.statusMsg = 'All packages updated';
-      this.statusType = 'success';
+      this.statusIcon = "✓";
+      this.statusMsg = "All packages updated";
+      this.statusType = "success";
+      this.changed = true;
     } catch (error) {
       clearInterval(spinner);
-      this.updatingSource = '';
-      this.statusIcon = '✗';
+      this.updatingSource = "";
+      this.statusIcon = "✗";
       this.statusMsg = `Update failed: ${String(error).slice(0, 80)}`;
-      this.statusType = 'error';
+      this.statusType = "error";
     }
 
     this.busy = false;
@@ -625,7 +623,7 @@ export class ManagerUI {
       return;
     }
 
-    this.view = 'versions';
+    this.view = "versions";
     this.detailsLoading = true;
     this.invalidate();
     try {
@@ -644,13 +642,41 @@ export class ManagerUI {
     const items: SelectItem[] = this.versions.map((v) => ({
       value: v.version,
       label: v.version,
-      description: '',
+      description: "",
     }));
-    return new SelectList(
-      items,
-      Math.min(items.length + 2, 15),
-      this.selectListTheme(),
-    );
+    return new SelectList(items, Math.min(items.length + 2, 20), this.selectListTheme());
+  }
+
+  // ── Page up/down ──────────────────────────────────────────────────────────
+
+  #pageUp(tab: Tab): void {
+    const list = tab === "installed" ? this.installedList : this.searchList;
+    if (!list) {
+      return;
+    }
+
+    const max = 20;
+    const sl = list as unknown as {
+      selectedIndex: number;
+      filteredItems: unknown[];
+    };
+    sl.selectedIndex = Math.max(0, sl.selectedIndex - max);
+    this.invalidate();
+  }
+
+  #pageDown(tab: Tab): void {
+    const list = tab === "installed" ? this.installedList : this.searchList;
+    if (!list) {
+      return;
+    }
+
+    const max = 20;
+    const sl = list as unknown as {
+      selectedIndex: number;
+      filteredItems: unknown[];
+    };
+    sl.selectedIndex = Math.min(sl.selectedIndex + max, sl.filteredItems.length - 1);
+    this.invalidate();
   }
 
   // ── Rendering ─────────────────────────────────────────────────────────────
@@ -661,43 +687,43 @@ export class ManagerUI {
     }
 
     const lines: string[] = [];
-    lines.push(this.fg('muted', '─'.repeat(width)));
-    lines.push(this.fg('accent', this.bold(' Pi Plugin Manager ')));
-    lines.push(this.fg('muted', '─'.repeat(width)));
+    lines.push(this.fg("muted", "─".repeat(width)));
+    lines.push(this.fg("accent", this.bold(" Pi Plugin Manager ")));
+    lines.push(this.fg("muted", "─".repeat(width)));
 
     // Tab bar
     const installedTab =
-      this.tab === 'installed'
-        ? this.bg('selectedBg', this.fg('accent', ' Installed '))
-        : this.fg('muted', ' Installed ');
+      this.tab === "installed"
+        ? this.bg("selectedBg", this.fg("accent", " Installed "))
+        : this.fg("muted", " Installed ");
     const searchTab =
-      this.tab === 'search'
-        ? this.bg('selectedBg', this.fg('accent', ' Search '))
-        : this.fg('muted', ' Search ');
-    lines.push(` ${installedTab} ${searchTab}`, '');
+      this.tab === "search"
+        ? this.bg("selectedBg", this.fg("accent", " Search "))
+        : this.fg("muted", " Search ");
+    lines.push(` ${installedTab} ${searchTab}`, "");
 
     // Content
     switch (this.view) {
-      case 'confirm': {
+      case "confirm": {
         lines.push(...this.#renderConfirm(width));
 
         break;
       }
 
-      case 'details': {
+      case "details": {
         lines.push(...this.#renderDetails(width));
 
         break;
       }
 
-      case 'versions': {
+      case "versions": {
         lines.push(...this.#renderVersions(width));
 
         break;
       }
 
-      case 'list': {
-        if (this.tab === 'installed') {
+      case "list": {
+        if (this.tab === "installed") {
           lines.push(...this.#renderInstalled(width));
         } else {
           lines.push(...this.#renderSearch(width));
@@ -705,138 +731,133 @@ export class ManagerUI {
       }
     }
 
-    lines.push('');
+    lines.push("");
+
+    // Status text
     lines.push(...this.#renderStatus(width));
+
+    lines.push("");
 
     // Keybinding hints
     const bindings = this.#renderBindings();
     lines.push(bindings);
-    lines.push(this.fg('muted', '─'.repeat(width)));
-    lines.push('');
+    lines.push(this.fg("muted", "─".repeat(width)));
+
+    // Pad with empty lines to fill the terminal height
+    while (lines.length < this.screenHeight) {
+      lines.push("");
+    }
 
     this.cachedLines = lines.map((l) => truncateToWidth(l, width));
     this.cachedWidth = width;
     return this.cachedLines;
   }
 
-  #keyHint(key: string, desc: string, keyColor = 'accent'): string {
-    return this.fg(keyColor, key) + this.fg('dim', `:${desc}`);
+  #keyHint(key: string, desc: string, keyColor = "accent"): string {
+    return this.fg(keyColor, key) + this.fg("dim", `:${desc}`);
   }
 
   #renderStatus(width: number): string[] {
     const color =
-      this.statusType === 'error'
-        ? 'error'
-        : this.statusType === 'success'
-          ? 'success'
-          : 'accent';
-    const icon = this.statusIcon ? this.fg(color, this.statusIcon) : '';
-    const text = this.fg('text', ` ${this.statusMsg}`);
-    return [truncateToWidth(icon + text, width, '')];
+      this.statusType === "error" ? "error" : this.statusType === "success" ? "success" : "accent";
+    const icon = this.statusIcon ? this.fg(color, this.statusIcon) : "";
+    const text = this.fg("text", ` ${this.statusMsg}`);
+    return [truncateToWidth(icon + text, width, "")];
   }
 
   #renderBindings(): string {
-    if (this.view === 'confirm') {
-      return [this.#keyHint('y', 'yes'), this.#keyHint('n/esc', 'cancel')].join(
-        '  ',
-      );
+    if (this.view === "confirm") {
+      return [this.#keyHint("y", "yes"), this.#keyHint("n/esc", "cancel")].join("  ");
     }
 
-    if (this.view === 'details' || this.view === 'versions') {
-      return this.#keyHint('esc', 'back');
+    if (this.view === "details" || this.view === "versions") {
+      return this.#keyHint("esc", "back");
     }
 
-    if (this.tab === 'installed') {
+    if (this.tab === "installed") {
       const parts = [
-        this.#keyHint('↑↓', 'navigate'),
-        this.#keyHint('enter/r/del', 'remove', 'warning'),
+        this.#keyHint("↑↓", "navigate"),
+        this.#keyHint("enter/r/del", "remove", "warning"),
         this.hasUpdates
-          ? this.fg('warning', 'u') + this.fg('dim', ':update all')
-          : this.#keyHint('u', 'update all'),
-        this.#keyHint('i', 'details'),
-        this.#keyHint('tab', 'search'),
-        this.#keyHint('esc', 'close'),
+          ? this.fg("warning", "u") + this.fg("dim", ":update all")
+          : this.#keyHint("u", "update all"),
+        this.#keyHint("i", "details"),
+        this.#keyHint("tab", "search"),
+        this.#keyHint("esc", "close"),
       ];
-      return parts.join('  ');
+      return parts.join("  ");
     }
 
     return [
-      this.#keyHint('type', 'search'),
-      this.#keyHint('↑↓', 'navigate'),
-      this.#keyHint('enter', 'install'),
-      this.#keyHint('v', 'versions'),
-      this.#keyHint('i', 'details'),
-      this.#keyHint('tab', 'installed'),
-      this.#keyHint('esc', 'close'),
-    ].join('  ');
+      this.#keyHint("type", "search"),
+      this.#keyHint("↑↓", "navigate"),
+      this.#keyHint("enter", "install"),
+      this.#keyHint("v", "versions"),
+      this.#keyHint("i", "details"),
+      this.#keyHint("tab", "installed"),
+      this.#keyHint("esc", "close"),
+    ].join("  ");
   }
 
   // ── Confirmation view ─────────────────────────────────────────────────────
 
-  #renderConfirm(width: number): string[] {
+  #renderConfirm(_width: number): string[] {
     return [
-      '',
-      this.fg('warning', this.bold(` remove ${this.confirmTarget}?`)),
-      '',
-      this.fg('dim', ' [y] Yes    [n] No'),
+      "",
+      this.fg("warning", this.bold(` remove ${this.confirmTarget}?`)),
+      "",
+      this.fg("dim", " [y] Yes    [n] No"),
     ];
   }
 
   // ── Details view ──────────────────────────────────────────────────────────
 
-  #renderDetails(width: number): string[] {
+  #renderDetails(_width: number): string[] {
     if (this.detailsLoading) {
-      return ['', this.fg('dim', ' Loading details...')];
+      return ["", this.fg("dim", " Loading details...")];
     }
 
     if (!this.details) {
-      return ['', this.fg('dim', ' No details available.')];
+      return ["", this.fg("dim", " No details available.")];
     }
 
     const d = this.details;
     const lines: string[] = [];
-    lines.push(this.fg('accent', this.bold(` ${d.name}`)));
-    lines.push('');
+    lines.push(this.fg("accent", this.bold(` ${d.name}`)));
+    lines.push("");
     if (d.description) {
-      lines.push(this.fg('text', ` ${d.description}`));
-      lines.push('');
+      lines.push(this.fg("text", ` ${d.description}`));
+      lines.push("");
     }
 
-    lines.push(this.fg('dim', ` Version: ${d.version}`));
+    lines.push(this.fg("dim", ` Version: ${d.version}`));
     if (d.author) {
-      lines.push(this.fg('dim', ` Author: ${d.author}`));
+      lines.push(this.fg("dim", ` Author: ${d.author}`));
     }
 
     if (d.license) {
-      lines.push(this.fg('dim', ` License: ${d.license}`));
+      lines.push(this.fg("dim", ` License: ${d.license}`));
     }
 
     if (d.homepage) {
-      lines.push(this.fg('dim', ` ${d.homepage}`));
+      lines.push(this.fg("dim", ` ${d.homepage}`));
     }
 
     if (d.keywords && d.keywords.length > 0) {
-      lines.push(this.fg('dim', ` Keywords: ${d.keywords.join(', ')}`));
+      lines.push(this.fg("dim", ` Keywords: ${d.keywords.join(", ")}`));
     }
 
     if (d.downloads !== undefined) {
-      lines.push(
-        this.fg(
-          'dim',
-          ` Downloads (last month): ${d.downloads.toLocaleString()}`,
-        ),
-      );
+      lines.push(this.fg("dim", ` Downloads (last month): ${d.downloads.toLocaleString()}`));
     }
 
     if (d.publishDate) {
       const pubDate = new Date(d.publishDate);
-      lines.push(
-        this.fg('dim', ` Last publish: ${pubDate.toLocaleDateString()}`),
-      );
+      lines.push(this.fg("dim", ` Last publish: ${pubDate.toLocaleDateString()}`));
     }
 
-    lines.push('');
-    lines.push(this.fg('dim', ' esc:back'));
+    lines.push("");
+    lines.push(this.fg("dim", " esc:back"));
     return lines;
   }
 
@@ -844,16 +865,16 @@ export class ManagerUI {
 
   #renderVersions(width: number): string[] {
     if (this.detailsLoading) {
-      return ['', this.fg('dim', ' Loading versions...')];
+      return ["", this.fg("dim", " Loading versions...")];
     }
 
     if (this.versions.length === 0) {
-      return ['', this.fg('dim', ' No versions available.')];
+      return ["", this.fg("dim", " No versions available.")];
     }
 
     const lines: string[] = [];
-    lines.push(this.fg('accent', ' Select version to install'));
-    lines.push('');
+    lines.push(this.fg("accent", " Select version to install"));
+    lines.push("");
     if (this.versionList) {
       lines.push(...this.versionList.render(width));
     }
@@ -865,11 +886,10 @@ export class ManagerUI {
 
   #renderInstalled(width: number): string[] {
     const lines: string[] = [];
-    lines.push(this.fg('accent', ` 🔍 ${this.installedFilter}█`), '');
     if (this.installedPkgs.length === 0) {
-      lines.push(this.fg('dim', ' No packages installed.'));
-      lines.push('');
-      lines.push(this.fg('dim', ' Switch to Search tab to find packages.'));
+      lines.push(this.fg("dim", " No packages installed."));
+      lines.push("");
+      lines.push(this.fg("dim", " Switch to Search tab to find packages."));
       return lines;
     }
 
@@ -879,31 +899,24 @@ export class ManagerUI {
   }
 
   #buildInstalledList(): SelectList {
-    const filter = this.installedFilter.toLowerCase();
-    const filtered = filter
-      ? this.installedPkgs.filter(
-          (p) =>
-            p.name.toLowerCase().includes(filter) ||
-            p.source.toLowerCase().includes(filter),
-        )
-      : this.installedPkgs;
-    this.hasUpdates = filtered.some((p) => p.hasUpdate);
-    this.filteredPkgs = filtered;
+    this.hasUpdates = this.installedPkgs.some((p) => p.hasUpdate);
+    this.filteredPkgs = this.installedPkgs;
 
-    const items: SelectItem[] = filtered.map((p) => {
-      const isUpdating =
-        this.updatingSource === '*' || this.updatingSource === p.source;
-      const isChecking = this.checkingVersions && p.type === 'npm';
-      const icon =
-        isUpdating || isChecking
-          ? '⏳'
+    const items: SelectItem[] = this.filteredPkgs.map((p) => {
+      const isUpdating = this.updatingSource === "*" || this.updatingSource === p.source;
+      const isChecking = this.checkingVersions && p.type === "npm";
+      const wasUpdated = this.justUpdatedSources.has(p.source);
+      const icon = wasUpdated
+        ? "✓"
+        : isUpdating || isChecking
+          ? "⏳"
           : p.hasUpdate
-            ? '⬆'
-            : p.type === 'npm'
-              ? '📦'
-              : p.type === 'git'
-                ? '🔀'
-                : '📁';
+            ? "🔄"
+            : p.type === "npm"
+              ? "📦"
+              : p.type === "git"
+                ? "🔀"
+                : "📁";
       const ver = resolveInstalledVersion(p);
       const desc = p.description || getCachedDescription(p.name) || p.type;
       let text = `${ver} — ${desc}`;
@@ -911,14 +924,14 @@ export class ManagerUI {
         text = `${ver} → ${p.latestVersion} — ${desc}`;
       }
 
-      return {value: p.source, label: `${icon} ${p.name}`, description: text};
+      if (wasUpdated) {
+        text = `✓ ${ver} — ${desc}`;
+      }
+
+      return { value: p.source, label: `${icon} ${p.name}`, description: text };
     });
 
-    const list = new SelectList(
-      items,
-      Math.min(items.length + 2, 15),
-      this.selectListTheme(),
-    );
+    const list = new SelectList(items, Math.min(items.length + 2, 20), this.selectListTheme());
     const idx = this.installedList?.selectedIndex ?? 0;
     if (idx < items.length) {
       list.selectedIndex = idx;
@@ -931,14 +944,14 @@ export class ManagerUI {
 
   #renderSearch(width: number): string[] {
     const lines: string[] = [];
-    lines.push(this.fg('accent', ` 🔍 ${this.searchQuery}█`), '');
+    lines.push(this.fg("accent", ` 🔍 ${this.searchQuery}█`), "");
     if (this.searchLoading) {
-      lines.push(this.fg('dim', ' Searching...'));
+      lines.push(this.fg("dim", " Searching..."));
     } else if (this.searchResults.length === 0) {
       lines.push(
         this.searchQuery
-          ? this.fg('dim', ' No results found.')
-          : this.fg('dim', ' Type to search Pi packages on npm...'),
+          ? this.fg("dim", " No results found.")
+          : this.fg("dim", " Type to search Pi packages on npm..."),
       );
     } else if (this.searchList) {
       lines.push(...this.searchList.render(width));
@@ -953,16 +966,9 @@ export class ManagerUI {
       label: `📦 ${r.name}`,
       description: `${r.version} — ${r.description.slice(0, 60)}`,
     }));
-    const list = new SelectList(
-      items,
-      Math.min(items.length + 2, 15),
-      this.selectListTheme(),
-    );
+    const list = new SelectList(items, Math.min(items.length + 2, 20), this.selectListTheme());
     if (this.searchList) {
-      list.selectedIndex = Math.min(
-        this.searchList.selectedIndex,
-        items.length - 1,
-      );
+      list.selectedIndex = Math.min(this.searchList.selectedIndex, items.length - 1);
     }
 
     return list;

@@ -6,7 +6,7 @@
 
 // ── Package types ───────────────────────────────────────────────────────────
 
-export type PackageSource = 'npm' | 'git' | 'local';
+export type PackageSource = "npm" | "git" | "local";
 
 export type Package = {
   source: string;

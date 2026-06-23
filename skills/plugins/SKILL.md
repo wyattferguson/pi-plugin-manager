@@ -1,9 +1,9 @@
 ---
-name: manage
+name: plugins
 description: Manage installed Pi plugins. List, install, remove, and update plugins. Use when the user wants to manage their Pi extensions / plugin manager.
 ---
 
-# Pi Manager
+# Pi Plugin Manager
 
 Manage Pi plugins with a terminal UI:
 
@@ -13,4 +13,4 @@ Manage Pi plugins with a terminal UI:
 - Update plugins to the latest version
 - Update all outdated plugins at once
 
-Type `/manage` to open the plugin manager.
+Type `/plugins` to open the plugin manager.

@@ -1,22 +1,23 @@
 /**
  Pi-plugin-manager — Plugin manager entry point.
 
- Registers the `/manage` command and wires up the ManagerUI component
+ Registers the `/plugins` command and wires up the ManagerUI component
  with Pi's TUI lifecycle.
 
  @module pi-plugin-manager
  */
 
-import type {ExtensionAPI} from '@earendil-works/pi-coding-agent';
-import {loadPackages, checkNpmUpdates, checkGitUpdates} from './packages';
-import {ManagerUI} from './ui';
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { loadPackages, checkNpmUpdates, checkGitUpdates } from "./packages";
+import { ManagerUI } from "./ui";
 
 export default function (pi: ExtensionAPI) {
-  pi.registerCommand('manage', {
-    description: 'Open the Pi plugin manager',
+  pi.registerCommand("plugins", {
+    description: "Open the Pi plugin manager",
     async handler(_args, ctx) {
       const pkgs = loadPackages();
-      const ui = new ManagerUI(pkgs);
+      const screenHeight = (process.stdout as { rows?: number }).rows ?? 30;
+      const ui = new ManagerUI(pkgs, screenHeight);
 
       // Background update checks — refresh UI when done
       Promise.all([checkNpmUpdates(pkgs), checkGitUpdates(pkgs)])
@@ -27,6 +28,9 @@ export default function (pi: ExtensionAPI) {
           ui.finishCheckingVersions();
         });
 
+      // Clear screen so TUI takes up the full terminal
+      process.stdout.write("\u{1B}[2J\u{1B}[H");
+
       await ctx.ui.custom((tui, theme, _kb, done) => {
         ui.setTheme(theme);
         ui.setRequestRender(() => {
@@ -34,6 +38,13 @@ export default function (pi: ExtensionAPI) {
         });
         ui.onClose = () => {
           done(undefined);
+
+          if (ui.changed) {
+            process.stdout.write("\u{1B}[2J\u{1B}[H");
+            process.stdout.write(
+              "\u{1B}[33m⚠  Changes made — run /reload to activate new plugins\u{1B}[0m\n",
+            );
+          }
         };
 
         return {
