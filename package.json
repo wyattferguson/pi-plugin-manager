@@ -1,11 +1,22 @@
 {
   "$schema": "https://json.schemastore.org/package",
   "name": "pi-plugin-manager",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Plugin manager for the pi agent harness",
   "keywords": [
-    "pi-plugin-manager"
+    "pi-package",
+    "pi-plugin-manager",
+    "pi",
+    "pi-extension"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wyattferguson/pi-plugin-manager.git"
+  },
+  "homepage": "https://github.com/wyattferguson/pi-plugin-manager#readme",
+  "bugs": {
+    "url": "https://github.com/wyattferguson/pi-plugin-manager/issues"
+  },
   "license": "MIT",
   "author": "Wyatt Ferguson",
   "files": [
@@ -38,6 +49,7 @@
     ],
     "skills": [
       "./skills"
-    ]
+    ],
+    "image": "https://github.com/wyattferguson/pi-plugin-manager/raw/main/assets/search-screenshot.png"
   }
 }
