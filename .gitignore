@@ -1,6 +1,10 @@
 node_modules/
 .pi/
 
+# Lockfiles (bun.lock is the source of truth)
+package-lock.json
+package-lock.yaml
+
 # Build artifacts
 target/
 dist/

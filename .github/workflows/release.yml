@@ -24,10 +24,6 @@ jobs:
       - name: Build & verify
         run: bun run build
 
-      - run: npm ci
-      - run: npm run build --if-present
-      - run: npm test
-
       - name: Pack
         run: npm pack --pack-destination .
 
