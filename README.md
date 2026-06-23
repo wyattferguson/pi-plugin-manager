@@ -10,9 +10,7 @@
   <img src="https://img.shields.io/github/v/release/wyattferguson/pi-plugin-manager?style=flat-square&color=111111&label=release" alt="Release">
 </p>
 
-Ever installed a Pi plugin and then forgotten what it's called? Or installed ten of them and lost track of which ones need updating? **pi-plugin-manager** is the `/plugins` command that Pi should have shipped with — a terminal UI for everything your extensions, skills, and packages are doing.
-
-Press `/plugins` and you get two tabs: **Installed** shows everything you've installed (with version numbers, descriptions, and update indicators). **Search** lets you browse the npm registry for `pi-package`-tagged packages — the ones designed to work with Pi. Install with enter, remove with r, update all with u. Spinners tell you when something's happening.
+A terminal UI for managing Pi plugins — browse what's installed, search the catalog, install/remove/update, all without leaving the terminal.
 
 <p align="center">
   <img src="assets/installed-screenshot.png" alt="Installed tab" width="600">
@@ -22,12 +20,11 @@ Press `/plugins` and you get two tabs: **Installed** shows everything you've ins
   <img src="assets/search-screenshot.png" alt="Search tab" width="600">
 </p>
 
-- **📋 Browse installed** — All your Pi plugins in one list with version numbers and descriptions
-- **🔍 Search catalog** — Find Pi packages on npm by keyword, or just browse what's popular
-- **📦 Install / 🗑 Remove** — Enter to install from search, r/del to remove from your list
-- **⬆ Update all** — One key (`u`) updates every outdated package
-- **📄 Package details** — Press `i` to see description, author, downloads, and publish date
-- **📋 Version picker** — Press `v` on a search result to choose which version to install
+- **Browse / Install / Remove Plugins** — See and manage all your plugins from one place
+- **Search catalog** — Find and install plugins from Pi Package Catalog
+- **Update all** — One key (`u`) updates every outdated package
+- **Package details** — (`i`) shows description, author, downloads, publish date
+- **Version picker** — (`v`) pick specific plugin versions for maximum compatibility
 
 ## Usage
 
