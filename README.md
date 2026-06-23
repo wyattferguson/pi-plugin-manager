@@ -23,18 +23,22 @@ It's one file, one command, and it's got a cache so repeated opens are instant.
 - **📦 Install / 🗑 Remove** — Enter to install from search, r/del to remove from your list
 - **⬆ Update all** — One key (`u`) updates every outdated package
 - **📄 Package details** — Press `i` to see description, author, downloads, and publish date
-- **⏳ Live spinners** — Every operation (install, remove, update) shows an animated indicator
 - **🔎 Filter installed** — Type to filter your installed list by name
 - **📋 Version picker** — Press `v` on a search result to choose which version to install
-- **⚡ Cached** — Package details and search results are cached locally for fast re-opens
 
 ## Usage
+
+Install command:
 
 ```bash
 pi install npm:pi-plugin-manager
 ```
 
-Then type `/manage` in Pi.
+Run in Pi with:
+
+```bash
+/manage
+```
 
 ### Keybindings
 
@@ -61,45 +65,6 @@ Then type `/manage` in Pi.
 | Type    | Search catalog            |
 | `Tab`   | Switch to installed       |
 | `Esc`   | Back / Close              |
-
-## Contributing
-
-### Prerequisites
-
-- [Bun](https://bun.sh) ≥ 1.3
-- [Pi](https://pi.dev) (for integration testing)
-
-### Setup
-
-```bash
-git clone https://github.com/wyattferguson/pi-plugin-manager.git
-cd pi-plugin-manager
-bun install
-```
-
-### Commands
-
-| Command             | Purpose                                    |
-| ------------------- | ------------------------------------------ |
-| `bun test`          | Run 31 unit tests                          |
-| `bun run lint`      | Lint with xo (strict rules)                |
-| `bun run typecheck` | TypeScript type checking                   |
-| `bun run build`     | Full CI pipeline (typecheck → lint → test) |
-
-### Project structure
-
-```text
-pi-plugin-manager/
-├── extensions/
-│   ├── index.ts          # Extension entry point + /manage command
-│   ├── ui.ts             # ManagerUI component (state, input, rendering)
-│   ├── packages.ts       # Package utilities (load, parse, version checks, CLI)
-│   └── types.ts          # Shared TypeScript types
-├── types/                # Type stubs for Pi's runtime APIs
-├── tests/                # Unit tests (bun:test)
-├── skills/manage/        # Agent skill description
-└── package.json
-```
 
 ## License
 
