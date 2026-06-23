@@ -15,4 +15,4 @@ out/
 *.js
 *.js.map
 *.d.ts
-!scripts/download-grammars.js
+!scripts/download-grammars.js.npmrc
