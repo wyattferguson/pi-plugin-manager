@@ -23,6 +23,8 @@ jobs:
         with:
           node-version: "22"
 
+      - run: npm install -g npm@latest
+
       - run: bun install --frozen-lockfile
 
       - name: Build & verify
