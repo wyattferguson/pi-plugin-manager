@@ -345,7 +345,7 @@ export class ManagerUI {
 
   #handleVersionInput(data: string): void {
     if (matchesKey(data, "enter")) {
-      const idx = this.versionList?.selectedIndex ?? 0;
+      const idx = this.#selectedIndex(this.versionList);
       const ver = this.versions[idx];
       if (ver) {
         void this.#installVersion(ver.version);
@@ -361,7 +361,7 @@ export class ManagerUI {
 
   async #installVersion(version: string): Promise<void> {
     this.view = "list";
-    const idx = this.searchList?.selectedIndex ?? 0;
+    const idx = this.#selectedIndex(this.searchList);
     const result = this.searchResults[idx];
     if (!result) {
       return;
@@ -395,7 +395,7 @@ export class ManagerUI {
   // ── Package details ───────────────────────────────────────────────────────
 
   async #showDetails(): Promise<void> {
-    const idx = this.installedList?.selectedIndex ?? 0;
+    const idx = this.#selectedIndex(this.installedList);
     const pkg = this.filteredPkgs[idx];
     if (pkg?.type !== "npm") {
       return;
@@ -416,7 +416,7 @@ export class ManagerUI {
   }
 
   async #showSearchDetails(): Promise<void> {
-    const idx = this.searchList?.selectedIndex ?? 0;
+    const idx = this.#selectedIndex(this.searchList);
     const result = this.searchResults[idx];
     if (!result) {
       return;
@@ -503,7 +503,7 @@ export class ManagerUI {
       return;
     }
 
-    const idx = this.installedList?.selectedIndex ?? 0;
+    const idx = this.#selectedIndex(this.installedList);
     const pkg = this.filteredPkgs[idx];
     if (!pkg) {
       return;
@@ -622,7 +622,7 @@ export class ManagerUI {
   }
 
   async #showVersions(): Promise<void> {
-    const idx = this.searchList?.selectedIndex ?? 0;
+    const idx = this.#selectedIndex(this.searchList);
     const result = this.searchResults[idx];
     if (!result) {
       return;
@@ -937,9 +937,9 @@ export class ManagerUI {
     });
 
     const list = new SelectList(items, Math.min(items.length + 2, 20), this.selectListTheme());
-    const idx = this.installedList?.selectedIndex ?? 0;
+    const idx = this.#selectedIndex(this.installedList);
     if (idx < items.length) {
-      list.selectedIndex = idx;
+      (list as unknown as { selectedIndex: number }).selectedIndex = idx;
     }
 
     return list;
@@ -972,8 +972,12 @@ export class ManagerUI {
       description: `${r.version} — ${r.description.slice(0, 60)}`,
     }));
     const list = new SelectList(items, Math.min(items.length + 2, 20), this.selectListTheme());
+    const prevIdx = this.#selectedIndex(this.searchList);
     if (this.searchList) {
-      list.selectedIndex = Math.min(this.searchList.selectedIndex, items.length - 1);
+      (list as unknown as { selectedIndex: number }).selectedIndex = Math.min(
+        prevIdx,
+        items.length - 1,
+      );
     }
 
     return list;
