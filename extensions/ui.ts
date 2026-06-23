@@ -22,7 +22,13 @@ import {
   fetchPackageVersions,
   getCachedDescription,
 } from "./packages";
-import type { Package, SearchResult, Theme, PackageDetails, VersionInfo } from "./types";
+import type { Package, SearchResult, PackageDetails, VersionInfo } from "./types";
+// Matches pi's Theme class shape (fg/bg/bold methods)
+interface Theme {
+  fg(color: string, text: string): string;
+  bg(color: string, text: string): string;
+  bold(text: string): string;
+}
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
