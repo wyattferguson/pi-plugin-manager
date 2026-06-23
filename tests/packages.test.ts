@@ -2,8 +2,6 @@
  Tests: Package parsing, loading, filtering, and version resolution.
  */
 
-/* eslint-disable @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- bun:test types */
-
 import {describe, expect, test} from 'bun:test';
 import {parseSource, resolveInstalledVersion} from '../extensions/packages';
 import type {Package} from '../extensions/types';
@@ -213,12 +211,13 @@ describe('buildInstalledItems', () => {
             ? '🔀'
             : '📁';
       const ver = resolveInstalledVersion(p);
-      let desc = `${ver} — ${p.type}`;
+      const desc = p.description ?? p.type;
+      let text = `${ver} — ${desc}`;
       if (p.hasUpdate && p.latestVersion) {
-        desc = `${ver} → ${p.latestVersion} — ${p.type}`;
+        text = `${ver} → ${p.latestVersion} — ${desc}`;
       }
 
-      return {label: `${icon} ${p.name}`, description: desc};
+      return {label: `${icon} ${p.name}`, description: text};
     });
   }
 

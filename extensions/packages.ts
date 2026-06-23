@@ -1,16 +1,16 @@
 /**
- Pi-manager — Package management utilities.
- 
+ Pi-plugin-manager — Package management utilities.
+
  Reading installed packages, version checking, npm registry search,
  and CLI operations (install/remove/update).
- 
- @module pi-manager/packages
+
+ @module pi-plugin-manager/packages
  */
 
 /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return -- Pi/node built-in APIs */
 
-import {execSync} from 'node:child_process';
-import {existsSync, readFileSync} from 'node:fs';
+import {execSync, spawn} from 'node:child_process';
+import {existsSync, readFileSync, writeFileSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {join} from 'node:path';
 import type {Package, PackageDetails, SearchResult, VersionInfo} from './types';
@@ -20,6 +20,80 @@ import type {Package, PackageDetails, SearchResult, VersionInfo} from './types';
 const AGENT_DIR = join(homedir(), '.pi', 'agent');
 const GLOBAL_SETTINGS = join(AGENT_DIR, 'settings.json');
 const NPM_DIR = join(AGENT_DIR, 'npm');
+const CACHE_FILE = join(AGENT_DIR, 'pi-plugin-manager-cache.json');
+const CACHE_TTL_DETAILS = 60 * 60 * 1000; // 1 hour for package details
+const CACHE_TTL_SEARCH = 15 * 60 * 1000; // 15 minutes for search results
+
+// ── Cache ───────────────────────────────────────────────────────────────────
+
+type CacheEntry = {
+  time: number;
+  data: unknown;
+};
+
+type CacheStore = Record<string, CacheEntry>;
+
+function readCache(): CacheStore {
+  if (!existsSync(CACHE_FILE)) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(readFileSync(CACHE_FILE, 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+function writeCache(store: CacheStore): void {
+  try {
+    writeFileSync(CACHE_FILE, JSON.stringify(store), 'utf8');
+  } catch {
+    /* */
+  }
+}
+
+function cacheGet<T>(
+  store: CacheStore,
+  key: string,
+  ttl: number,
+): T | undefined {
+  const entry = store[key];
+  if (!entry) {
+    return;
+  }
+
+  if (Date.now() - entry.time > ttl) {
+    return;
+  }
+
+  return entry.data as T;
+}
+
+function cacheSet(store: CacheStore, key: string, data: unknown): void {
+  store[key] = {time: Date.now(), data};
+}
+
+export function getCachedDescription(name: string): string | undefined {
+  const cache = readCache();
+  const key = `npm-detail:${name}`;
+  const entry = cache[key];
+  if (!entry || Date.now() - entry.time > CACHE_TTL_DETAILS) {
+    return;
+  }
+
+  return (entry.data as {description: string}).description;
+}
+
+export function clearPackageCache(name: string): void {
+  const store = readCache();
+  const npmKey = `npm:${name}`;
+  // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+  delete store[name];
+  // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+  delete store[npmKey];
+  writeCache(store);
+}
 
 // ── Package loading ─────────────────────────────────────────────────────────
 
@@ -156,10 +230,27 @@ export function resolveInstalledVersion(pkg: Package): string {
 
 /** Check npm registry for newer versions. Mutates packages in place. */
 export async function checkNpmUpdates(pkgs: Package[]): Promise<void> {
+  const cache = readCache();
+  let dirty = false;
+
   const results = await Promise.allSettled(
     pkgs
       .filter((p) => p.type === 'npm')
       .map(async (p) => {
+        // Check cache first
+        const key = `npm-detail:${p.name}`;
+        const cached = cacheGet<{version: string; description: string}>(
+          cache,
+          key,
+          CACHE_TTL_DETAILS,
+        );
+        if (cached) {
+          p.latestVersion = cached.version;
+          p.description = cached.description;
+          p.hasUpdate = p.version !== undefined && p.version !== cached.version;
+          return;
+        }
+
         const resp = await fetch(
           `https://registry.npmjs.org/${encodeURIComponent(p.name)}/latest`,
           {signal: AbortSignal.timeout(5000)},
@@ -168,12 +259,25 @@ export async function checkNpmUpdates(pkgs: Package[]): Promise<void> {
           return;
         }
 
-        const data = (await resp.json()) as {version: string};
+        const data = (await resp.json()) as {
+          version: string;
+          description?: string;
+        };
         p.latestVersion = data.version;
+        p.description = data.description ?? '';
         p.hasUpdate = p.version !== undefined && p.version !== data.version;
+
+        cacheSet(cache, key, {
+          version: data.version,
+          description: data.description ?? '',
+        });
+        dirty = true;
       }),
   );
   void results;
+  if (dirty) {
+    writeCache(cache);
+  }
 }
 
 /** Check git remotes for newer tags. Offloads execSync via setTimeout. */
@@ -241,6 +345,20 @@ export async function searchCatalog(
   const q = trimmed
     ? `keywords:pi-package+${encodeURIComponent(trimmed)}`
     : 'keywords:pi-package';
+
+  // Check cache for empty/popular query
+  if (!trimmed) {
+    const cache = readCache();
+    const cached = cacheGet<SearchResult[]>(
+      cache,
+      'search:popular',
+      CACHE_TTL_SEARCH,
+    );
+    if (cached) {
+      return cached;
+    }
+  }
+
   const url = `https://registry.npmjs.org/-/v1/search?text=${q}&size=${size}`;
   const effectiveSignal = signal ?? AbortSignal.timeout(8000);
   try {
@@ -254,12 +372,21 @@ export async function searchCatalog(
         package: {name: string; version: string; description?: string};
       }>;
     };
-    return data.objects.map((o) => ({
+    const results = data.objects.map((o) => ({
       name: o.package.name,
       description: o.package.description ?? '',
       version: o.package.version,
       npmPackage: o.package.name,
     }));
+
+    // Cache popular results
+    if (!trimmed && results.length > 0) {
+      const store = readCache();
+      cacheSet(store, 'search:popular', results);
+      writeCache(store);
+    }
+
+    return results;
   } catch {
     return [];
   }
@@ -275,6 +402,38 @@ export function installPackage(source: string): string {
   });
 }
 
+/** Run a pi CLI command asynchronously via spawn. */
+async function spawnPi(args: string[], timeout = 120_000): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const child = spawn('pi', args, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout,
+      shell: true,
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout?.on('data', (d) => {
+      stdout += String(d);
+    });
+    child.stderr?.on('data', (d) => {
+      stderr += String(d);
+    });
+    child.on('close', (code) => {
+      if (code === 0 || code === null) {
+        resolve(stdout);
+      } else {
+        reject(new Error(stderr || `exit code ${code}`));
+      }
+    });
+    child.on('error', reject);
+  });
+}
+
+/** Install a package asynchronously via spawn. */
+export async function installPackageAsync(source: string): Promise<string> {
+  return spawnPi(['install', source]);
+}
+
 export function removePackage(source: string): string {
   return execSync(`pi remove ${source}`, {
     encoding: 'utf8',
@@ -283,12 +442,9 @@ export function removePackage(source: string): string {
   });
 }
 
-export function updateAllExtensions(): string {
-  return execSync('pi update --extensions', {
-    encoding: 'utf8',
-    timeout: 300_000,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+/** Remove a package asynchronously via spawn. */
+export async function removePackageAsync(source: string): Promise<string> {
+  return spawnPi(['remove', source], 60_000);
 }
 
 export function updatePackage(source: string): string {
@@ -297,6 +453,11 @@ export function updatePackage(source: string): string {
     timeout: 120_000,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+}
+
+/** Update all extensions asynchronously via spawn. Returns stdout on success. */
+export async function updateAllExtensionsAsync(): Promise<string> {
+  return spawnPi(['update', '--extensions'], 300_000);
 }
 
 // ── Package details ─────────────────────────────────────────────────────────
@@ -308,10 +469,15 @@ export async function fetchPackageDetails(
 ): Promise<PackageDetails | undefined> {
   const effectiveSignal = signal ?? AbortSignal.timeout(5000);
   try {
-    const resp = await fetch(
-      `https://registry.npmjs.org/${encodeURIComponent(name)}`,
-      {signal: effectiveSignal},
-    );
+    const [resp, dlResp] = await Promise.all([
+      fetch(`https://registry.npmjs.org/${encodeURIComponent(name)}`, {
+        signal: effectiveSignal,
+      }),
+      fetch(
+        `https://api.npmjs.org/downloads/point/last-month/${encodeURIComponent(name)}`,
+        {signal: effectiveSignal},
+      ),
+    ]);
     if (!resp.ok) {
       return;
     }
@@ -324,7 +490,14 @@ export async function fetchPackageDetails(
       homepage?: string;
       license?: string;
       keywords?: string[];
+      time?: {modified?: string};
     };
+    let downloads: number | undefined;
+    if (dlResp.ok) {
+      const dlData = (await dlResp.json()) as {downloads?: number};
+      downloads = dlData.downloads;
+    }
+
     return {
       name: data.name,
       description: data.description ?? '',
@@ -333,6 +506,8 @@ export async function fetchPackageDetails(
       homepage: data.homepage,
       license: data.license,
       keywords: data.keywords,
+      downloads,
+      publishDate: data.time?.modified,
     };
   } catch {}
 }

@@ -1,10 +1,8 @@
 /**
- Pi-manager — Shared types.
- 
- @module pi-manager/types
- */
+ Pi-plugin-manager — Shared types.
 
-import type {ExtensionCommandContext} from '@earendil-works/pi-coding-agent';
+ @module pi-plugin-manager/types
+ */
 
 // ── Package types ───────────────────────────────────────────────────────────
 
@@ -15,6 +13,7 @@ export type Package = {
   type: PackageSource;
   name: string;
   version?: string;
+  description?: string;
   hasUpdate?: boolean;
   latestVersion?: string;
 };
@@ -40,6 +39,8 @@ export type PackageDetails = {
   homepage?: string;
   license?: string;
   keywords?: string[];
+  downloads?: number;
+  publishDate?: string;
 };
 
 // ── Version picker ──────────────────────────────────────────────────────────
@@ -48,10 +49,6 @@ export type VersionInfo = {
   version: string;
 };
 
-// ── Confirmation ────────────────────────────────────────────────────────────
-
-export type ConfirmAction = 'remove' | 'update-all' | 'update-one' | 'install';
-
 // ── Theme ───────────────────────────────────────────────────────────────────
 
 export type Theme = {
@@ -59,7 +56,3 @@ export type Theme = {
   bg: (color: string, text: string) => string;
   bold: (text: string) => string;
 };
-
-// ── Component context ───────────────────────────────────────────────────────
-
-export type ManagerContext = ExtensionCommandContext;

@@ -1,55 +1,66 @@
-# pi-manager
+# pi-plugin-manager
 
-Plugin manager TUI for the [Pi coding agent harness](https://pi.dev).
+<p align="center">
+  <em>Browse, install, and remove Pi plugins — without leaving the terminal.</em>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/license-MIT-111111?style=flat-square" alt="MIT license">
+  <img src="https://img.shields.io/github/stars/wyattferguson/pi-plugin-manager?style=flat-square&color=111111&label=stars" alt="Stars">
+  <img src="https://img.shields.io/github/v/release/wyattferguson/pi-plugin-manager?style=flat-square&color=111111&label=release" alt="Release">
+</p>
+
+Ever installed a Pi plugin and then forgotten what it's called? Or installed ten of them and lost track of which ones need updating? **pi-plugin-manager** is the `/manage` command that Pi should have shipped with — a terminal UI for everything your extensions, skills, and packages are doing.
+
+Press `/manage` and you get two tabs: **Installed** shows everything you've installed (with version numbers, descriptions, and update indicators). **Search** lets you browse the npm registry for `pi-package`-tagged packages — the ones designed to work with Pi. Install with enter, remove with r, update all with u. Spinners tell you when something's happening.
+
+It's one file, one command, and it's got a cache so repeated opens are instant.
 
 ## Features
 
-- **List** all installed Pi plugins with version info and update indicators
-- **Install** plugins from the Pi package catalog (npm registry search)
-- **Remove** installed plugins
-- **Update** all outdated plugins at once (`u` key)
-- **Search** the Pi package catalog by keyword — defaults to popular packages
-- **Footer progress** during install, remove, update, and search operations
-- **Two-tab TUI** — Installed (browse/remove) and Search (find/install)
+- **📋 Browse installed** — All your Pi plugins in one list with version numbers and descriptions
+- **🔍 Search catalog** — Find Pi packages on npm by keyword, or just browse what's popular
+- **📦 Install / 🗑 Remove** — Enter to install from search, r/del to remove from your list
+- **⬆ Update all** — One key (`u`) updates every outdated package
+- **📄 Package details** — Press `i` to see description, author, downloads, and publish date
+- **⏳ Live spinners** — Every operation (install, remove, update) shows an animated indicator
+- **🔎 Filter installed** — Type to filter your installed list by name
+- **📋 Version picker** — Press `v` on a search result to choose which version to install
+- **⚡ Cached** — Package details and search results are cached locally for fast re-opens
 
 ## Usage
 
-Install globally:
-
 ```bash
-pi install npm:pi-manager
+pi install npm:pi-plugin-manager
 ```
 
-Or locally in a project:
-
-```bash
-pi install -l npm:pi-manager
-```
-
-Then type `/manage` in Pi to open the manager.
+Then type `/manage` in Pi.
 
 ### Keybindings
 
 **Installed tab**
 
-- `↑↓` — Navigate list
-- `Enter / r / Del` — Remove selected (with confirmation)
-- `u` — Update all packages (with confirmation)
-- `U` — Update selected package (with confirmation)
-- `i` — Show package details
-- `Type` — Filter packages by name
-- `/` — Jump to search tab
-- `Tab` — Switch to search
-- `Esc` — Back to list / Close manager
+| Key                   | Action                         |
+| --------------------- | ------------------------------ |
+| `↑↓`                  | Navigate list                  |
+| `Enter` / `r` / `Del` | Remove selected (with confirm) |
+| `u`                   | Update all packages            |
+| `i`                   | Show package details           |
+| Type                  | Filter by name                 |
+| `Tab`                 | Switch to search               |
+| `Esc`                 | Back / Close                   |
 
 **Search tab**
 
-- `↑↓` — Navigate results
-- `Enter` — Install selected package
-- `v` — Choose version to install
-- `Type` — Search npm registry
-- `Tab` — Switch to installed
-- `Esc` — Back / Close
+| Key     | Action                    |
+| ------- | ------------------------- |
+| `↑↓`    | Navigate results          |
+| `Enter` | Install selected          |
+| `v`     | Choose version to install |
+| `i`     | Show package details      |
+| Type    | Search catalog            |
+| `Tab`   | Switch to installed       |
+| `Esc`   | Back / Close              |
 
 ## Contributing
 
@@ -61,80 +72,38 @@ Then type `/manage` in Pi to open the manager.
 ### Setup
 
 ```bash
-git clone https://github.com/wyattferguson/pi-manager.git
-cd pi-manager
+git clone https://github.com/wyattferguson/pi-plugin-manager.git
+cd pi-plugin-manager
 bun install
 ```
 
-### Development workflow
+### Commands
 
-- **`bun test`** — Run 31 unit tests
-- **`bun run lint`** — Lint with xo (strict rules)
-- **`bun run typecheck`** — TypeScript type checking
-- **`bun run build`** — Full CI pipeline (typecheck → lint → test)
+| Command             | Purpose                                    |
+| ------------------- | ------------------------------------------ |
+| `bun test`          | Run 31 unit tests                          |
+| `bun run lint`      | Lint with xo (strict rules)                |
+| `bun run typecheck` | TypeScript type checking                   |
+| `bun run build`     | Full CI pipeline (typecheck → lint → test) |
 
 ### Project structure
 
 ```text
-pi-manager/
+pi-plugin-manager/
 ├── extensions/
-│   ├── index.ts          # ManagerUI component + /manage command
-│   ├── packages.ts       # Package utilities (load, parse, version checks, CLI ops)
+│   ├── index.ts          # Extension entry point + /manage command
+│   ├── ui.ts             # ManagerUI component (state, input, rendering)
+│   ├── packages.ts       # Package utilities (load, parse, version checks, CLI)
 │   └── types.ts          # Shared TypeScript types
-├── types/
-│   └── pi.d.ts           # Type stubs for Pi's runtime APIs
-├── tests/
-│   └── packages.test.ts  # Unit tests (bun:test)
-├── skills/
-│   └── manage/SKILL.md   # Agent skill description
-├── package.json
-├── tsconfig.json
-├── .npmignore
-└── README.md
+├── types/                # Type stubs for Pi's runtime APIs
+├── tests/                # Unit tests (bun:test)
+├── skills/manage/        # Agent skill description
+└── package.json
 ```
-
-### Code conventions
-
-- **Single quotes**, semicolons, 2-space indentation (enforced by xo + prettier)
-- **TypeScript strict mode** — `tsc --noEmit` must pass
-- **Private fields** use ES2022 `#method()` syntax for true encapsulation
-- **Theme-safe rendering** — all `theme.fg()/bg()/bold()` calls use `?.` guards
-- **Error boundaries** — `render()`, `handleInput()`, and footer ops are wrapped in try/catch
-
-### Testing
-
-Tests use [Bun's test runner](https://bun.sh/docs/test). To add a new test:
-
-1. Create `tests/<feature>.test.ts`
-2. Import `describe`, `expect`, `test` from `bun:test`
-3. Add the `eslint-disable` comment block at the top (bun:test types aren't resolvable by xo)
-
-### Submitting changes
-
-1. Fork the repo and create a feature branch
-2. Make changes — `bun run build` must pass
-3. Test manually in Pi: `pi -e ./extensions/index.ts`, then `/manage`
-4. Submit a PR with a clear description
-
-### Roadmap
-
-- [x] **Git package support** — full install/remove/update for git-sourced packages
-- [x] **Individual update** — `U` key updates one selected package
-- [x] **Package details view** — `i` key shows description, author, homepage
-- [x] **Keyboard shortcuts** — `r` remove, `/` search, `v` versions, `i` info
-- [x] **Filter installed packages** — type to filter in installed tab
-- [x] **Confirmation dialog** — y/n confirm before remove, update
-- [x] **Version picker** — `v` on search tab to choose install version
-- [ ] **Package health indicators** — show download count, last publish date, stars
-- [ ] **Color themes** — respect Pi's dark/light theme for better accessibility
-- [ ] **Export/import** — export installed package list for sharing
-- [ ] **Keyboard-only navigation hints** — show available keys in a footer bar
-- [ ] **Auto-refresh** — refresh update status periodically while manager is open
-- [ ] **Install from git URL** — paste a git URL directly to install
 
 ## License
 
-[MIT license](https://github.com/wyattferguson/pi-manager/blob/master/LICENSE)
+[MIT license](https://github.com/wyattferguson/pi-plugin-manager/blob/master/LICENSE)
 
 ## Contact + Support
 

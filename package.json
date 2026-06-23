@@ -1,6 +1,6 @@
 {
-  "name": "pi-manager",
-  "version": "1.0.1",
+  "name": "pi-plugin-manager",
+  "version": "1.0.2",
   "description": "Plugin manager for the pi agent harness",
   "keywords": [
     "pi-package"
