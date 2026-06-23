@@ -24,14 +24,6 @@ jobs:
       - name: Build & verify
         run: bun run build
 
-      - name: Publish to npm
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Pack
-        run: npm pack --pack-destination .
-
       - name: Generate checksum
         run: sha256sum pi-plugin-manager-*.tgz > checksums.txt
 
