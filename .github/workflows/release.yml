@@ -14,9 +14,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@v2.2.0
 
       - run: bun install --frozen-lockfile
 
@@ -30,7 +30,7 @@ jobs:
         run: sha256sum pi-plugin-manager-*.tgz > checksums.txt
 
       - name: Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             pi-plugin-manager-*.tgz
