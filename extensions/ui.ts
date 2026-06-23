@@ -319,8 +319,13 @@ export class ManagerUI {
     }
   }
 
+  #selectedIndex(list: SelectList | undefined): number {
+    if (!list) return 0;
+    return (list as unknown as { selectedIndex: number }).selectedIndex;
+  }
+
   #confirmRemove(): void {
-    const idx = this.installedList?.selectedIndex ?? 0;
+    const idx = this.#selectedIndex(this.installedList);
     const pkg = this.filteredPkgs[idx];
     if (!pkg) {
       return;
@@ -533,7 +538,7 @@ export class ManagerUI {
       return;
     }
 
-    const idx = this.searchList?.selectedIndex ?? 0;
+    const idx = this.#selectedIndex(this.searchList);
     const result = this.searchResults[idx];
     if (!result) {
       return;
