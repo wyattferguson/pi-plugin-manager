@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package",
   "name": "pi-plugin-manager",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Plugin manager for the pi agent harness",
   "keywords": [
     "pi-plugin-manager"
