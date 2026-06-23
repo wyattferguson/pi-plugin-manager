@@ -28,7 +28,12 @@ jobs:
         run: npm pack --pack-destination .
 
       - name: Publish to npm
-        run: npm publish --provenance
+        run: |
+          NPM_TOKEN=$(curl -sL \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm" | jq -r .value)
+          echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > ~/.npmrc
+          npm publish --provenance
 
       - name: Generate checksum
         run: sha256sum pi-plugin-manager-*.tgz > checksums.txt
