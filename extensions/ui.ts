@@ -16,7 +16,6 @@ import {
   searchCatalog,
   installPackageAsync,
   removePackageAsync,
-  updateAllExtensionsAsync,
   resolveInstalledVersion,
   fetchPackageDetails,
   getCachedDescription,
@@ -559,19 +558,44 @@ export class ManagerUI {
 
     this.busy = true;
     this.updatingSource = "*";
+    const oldPkgs = this.installedPkgs.map((p) => ({ ...p, _version: resolveInstalledVersion(p) }));
     const spinner = this.#startSpinner("Updating all packages");
 
     try {
-      await updateAllExtensionsAsync();
+      // Update each outdated package individually (handles pinned versions)
+      const toUpdate = this.installedPkgs.filter((p) => p.hasUpdate && p.type === "npm");
+      for (const p of toUpdate) {
+        this.statusMsg = `Updating ${p.name}`;
+        this.invalidate();
+        this.requestRender();
+        try {
+          await installPackageAsync(`npm:${p.name}`);
+        } catch {
+          // Individual package failure doesn't stop the rest
+        }
+      }
+
       clearInterval(spinner);
       this.updatingSource = "";
       this.installedPkgs = loadPackages();
       await checkNpmUpdates(this.installedPkgs);
+
+      // Mark packages that actually changed version
       for (const p of this.installedPkgs) {
-        this.justUpdatedSources.add(p.source);
+        const oldEntry = oldPkgs.find((o) => o.name === p.name);
+        if (oldEntry) {
+          const newVer = resolveInstalledVersion(p);
+          if (
+            oldEntry._version !== newVer &&
+            oldEntry._version !== "?" &&
+            oldEntry._version !== "local"
+          ) {
+            this.justUpdatedSources.add(p.source);
+          }
+        }
       }
 
-      // Auto-clear after 8 seconds or on next filter change
+      // Auto-clear after 8 seconds
       setTimeout(() => {
         this.justUpdatedSources.clear();
         this.invalidate();
@@ -736,13 +760,7 @@ export class ManagerUI {
       return parts.join("  ");
     }
 
-    return [
-      this.#keyHint("type", "search"),
-      this.#keyHint("↑↓", "navigate"),
-      this.#keyHint("enter", "install"),
-      this.#keyHint("tab", "installed"),
-      this.#keyHint("esc", "close"),
-    ].join("  ");
+    return [this.#keyHint("type", "search"), this.#keyHint("esc", "close")].join("  ");
   }
 
   // ── Confirmation view ─────────────────────────────────────────────────────
@@ -871,7 +889,7 @@ export class ManagerUI {
       }
 
       if (wasUpdated) {
-        text = `✓ ${ver} — ${desc}`;
+        text = `\x1b[33m${ver}\x1b[0m — ${desc}`;
       }
 
       return { value: p.source, label: `${icon} ${p.name}`, description: text };
@@ -891,6 +909,17 @@ export class ManagerUI {
   #renderSearch(width: number): string[] {
     const lines: string[] = [];
     lines.push(this.fg("accent", ` 🔍 ${this.searchQuery}█`), "");
+
+    // Inline keybinding hints always visible
+    const hints = [
+      this.#keyHint("↑↓", "navigate"),
+      this.#keyHint("enter", "install"),
+      this.#keyHint("tab", "installed"),
+      this.#keyHint("esc", "close"),
+    ].join("  ");
+    lines.push(this.fg("dim", hints));
+    lines.push("");
+
     if (this.searchLoading) {
       lines.push(this.fg("dim", " Searching..."));
     } else if (this.searchResults.length === 0) {

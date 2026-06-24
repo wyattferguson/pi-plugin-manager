@@ -239,7 +239,9 @@ export async function checkNpmUpdates(pkgs: Package[]): Promise<void> {
         if (cached) {
           p.latestVersion = cached.version;
           p.description = cached.description;
-          p.hasUpdate = p.version !== undefined && p.version !== cached.version;
+          const installedVer = p.version ?? resolveInstalledVersion(p);
+          p.hasUpdate =
+            installedVer !== "?" && installedVer !== "local" && installedVer !== cached.version;
           return;
         }
 
@@ -257,7 +259,9 @@ export async function checkNpmUpdates(pkgs: Package[]): Promise<void> {
         };
         p.latestVersion = data.version;
         p.description = data.description ?? "";
-        p.hasUpdate = p.version !== undefined && p.version !== data.version;
+        const installedVer = p.version ?? resolveInstalledVersion(p);
+        p.hasUpdate =
+          installedVer !== "?" && installedVer !== "local" && installedVer !== data.version;
 
         cacheSet(cache, key, {
           version: data.version,
