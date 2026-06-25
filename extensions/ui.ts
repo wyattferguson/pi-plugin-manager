@@ -20,7 +20,7 @@ import {
   fetchPackageDetails,
   getCachedDescription,
 } from "./packages";
-import type { Package, SearchResult, PackageDetails, VersionInfo } from "./types";
+import type { Package, SearchResult, PackageDetails } from "./types";
 // Matches pi's Theme class shape (fg/bg/bold methods)
 interface Theme {
   fg(color: string, text: string): string;
@@ -31,7 +31,7 @@ interface Theme {
 // ── Constants ───────────────────────────────────────────────────────────────
 
 type Tab = "installed" | "search";
-type View = "list" | "confirm" | "details" | "versions";
+type View = "list" | "confirm" | "details";
 
 // ── ManagerUI ───────────────────────────────────────────────────────────────
 
@@ -52,21 +52,23 @@ export class ManagerUI {
   private busy = false;
   private hasUpdates = false;
   private updatingSource = "";
+  private removingSource = "";
   private checkingVersions = true;
+  private installingSearchPkg = "";
   private readonly justUpdatedSources = new Set<string>();
+  private errorSources = new Map<string, string>();
 
   // Confirmation state
   private confirmTarget = "";
+  private confirmInstallPkg: SearchResult | undefined;
 
-  // Details / versions
+  // Details
   private details: PackageDetails | undefined;
-  private versions: VersionInfo[] = [];
   private detailsLoading = false;
 
   // TUI components
   private installedList: SelectList | undefined;
   private searchList: SelectList | undefined;
-  private versionList: SelectList | undefined;
 
   // Render cache
   private cachedWidth?: number;
@@ -185,11 +187,6 @@ export class ManagerUI {
       return;
     }
 
-    if (this.view === "versions") {
-      this.#handleVersionInput(data);
-      return;
-    }
-
     if (this.tab === "installed") {
       this.#handleInstalledInput(data);
     } else {
@@ -261,7 +258,14 @@ export class ManagerUI {
     }
 
     if (matchesKey(data, "enter")) {
-      void this.#installSelected();
+      const idx = this.#selectedIndex(this.searchList);
+      const result = this.searchResults[idx];
+      if (result) {
+        this.confirmInstallPkg = result;
+        this.view = "confirm";
+        this.invalidate();
+      }
+
       return;
     }
 
@@ -307,6 +311,7 @@ export class ManagerUI {
 
     if (data === "n" || data === "N" || matchesKey(data, "escape")) {
       this.view = "list";
+      this.confirmInstallPkg = undefined;
       this.statusMsg = "Cancelled";
       this.statusType = "info";
       this.invalidate();
@@ -332,59 +337,20 @@ export class ManagerUI {
 
   async #executeConfirm(): Promise<void> {
     this.view = "list";
-    await this.#removeSelected();
+
+    if (this.confirmInstallPkg) {
+      const result = this.confirmInstallPkg;
+      this.confirmInstallPkg = undefined;
+      await this.#doInstall(result);
+      return;
+    }
+
+    if (this.confirmTarget) {
+      await this.#removeSelected();
+    }
   }
 
   // ── Version picker ────────────────────────────────────────────────────────
-
-  #handleVersionInput(data: string): void {
-    if (matchesKey(data, "enter")) {
-      const idx = this.#selectedIndex(this.versionList);
-      const ver = this.versions[idx];
-      if (ver) {
-        void this.#installVersion(ver.version);
-      }
-
-      return;
-    }
-
-    this.versionList?.handleInput(data);
-    this.invalidate();
-    this.requestRender();
-  }
-
-  async #installVersion(version: string): Promise<void> {
-    this.view = "list";
-    const idx = this.#selectedIndex(this.searchList);
-    const result = this.searchResults[idx];
-    if (!result) {
-      return;
-    }
-
-    this.busy = true;
-    const spinner = this.#startSpinner(`Installing ${result.name} ${version}`);
-
-    try {
-      await installPackageAsync(`npm:${result.npmPackage}@${version}`);
-      clearInterval(spinner);
-      this.statusIcon = "✓";
-      this.statusMsg = `Installed ${result.name}@${version}`;
-      this.statusType = "success";
-      this.changed = true;
-      this.installedPkgs = loadPackages();
-      await checkNpmUpdates(this.installedPkgs);
-      this.installedList = this.#buildInstalledList();
-    } catch (error) {
-      clearInterval(spinner);
-      this.statusIcon = "✗";
-      this.statusMsg = `Failed: ${String(error).slice(0, 80)}`;
-      this.statusType = "error";
-    }
-
-    this.busy = false;
-    this.invalidate();
-    this.requestRender();
-  }
 
   // ── Package details ───────────────────────────────────────────────────────
 
@@ -433,6 +399,7 @@ export class ManagerUI {
     this.invalidate();
     try {
       this.searchResults = await searchCatalog(this.searchQuery, 20, signal);
+      this.installingSearchPkg = "";
       this.searchList = this.#buildSearchList();
       this.statusMsg = `${this.searchResults.length} results`;
       this.statusType = "info";
@@ -483,11 +450,16 @@ export class ManagerUI {
     }
 
     this.busy = true;
+    this.removingSource = pkg.source;
+    this.installedList = this.#buildInstalledList();
+    this.invalidate();
+    this.requestRender();
     const spinner = this.#startSpinner(`Removing ${pkg.name}`);
 
     try {
       await removePackageAsync(pkg.source);
       clearInterval(spinner);
+      this.removingSource = "";
       this.installedPkgs = this.installedPkgs.filter((p) => p.source !== pkg.source);
       this.installedList = this.#buildInstalledList();
       this.statusIcon = "✓";
@@ -496,6 +468,13 @@ export class ManagerUI {
       this.changed = true;
     } catch (error) {
       clearInterval(spinner);
+      this.removingSource = "";
+      this.errorSources.set(pkg.source, String(error).slice(0, 60));
+      setTimeout(() => {
+        this.errorSources.delete(pkg.source);
+        this.invalidate();
+        this.requestRender();
+      }, 8000);
       this.statusIcon = "✗";
       this.statusMsg = `Failed: ${String(error).slice(0, 80)}`;
       this.statusType = "error";
@@ -506,20 +485,6 @@ export class ManagerUI {
     this.requestRender();
   }
 
-  async #installSelected(): Promise<void> {
-    if (this.busy) {
-      return;
-    }
-
-    const idx = this.#selectedIndex(this.searchList);
-    const result = this.searchResults[idx];
-    if (!result) {
-      return;
-    }
-
-    await this.#doInstall(result);
-  }
-
   async #doInstall(result: SearchResult, version?: string): Promise<void> {
     if (this.busy) {
       return;
@@ -527,6 +492,10 @@ export class ManagerUI {
 
     const source = version ? `npm:${result.npmPackage}@${version}` : `npm:${result.npmPackage}`;
     this.busy = true;
+    this.installingSearchPkg = result.npmPackage;
+    this.searchList = this.#buildSearchList();
+    this.invalidate();
+    this.requestRender();
     const spinner = this.#startSpinner(`Installing ${result.name}`);
 
     try {
@@ -539,8 +508,18 @@ export class ManagerUI {
       this.installedPkgs = loadPackages();
       await checkNpmUpdates(this.installedPkgs);
       this.installedList = this.#buildInstalledList();
+      this.busy = false;
+      // Keep installingSearchPkg so ✓ shows until next search
+      this.searchList = this.#buildSearchList();
     } catch (error) {
       clearInterval(spinner);
+      this.installingSearchPkg = "";
+      this.errorSources.set(result.npmPackage, String(error).slice(0, 60));
+      setTimeout(() => {
+        this.errorSources.delete(result.npmPackage);
+        this.invalidate();
+        this.requestRender();
+      }, 8000);
       this.statusIcon = "✗";
       this.statusMsg = `Failed: ${String(error).slice(0, 80)}`;
       this.statusType = "error";
@@ -569,9 +548,14 @@ export class ManagerUI {
         this.invalidate();
         this.requestRender();
         try {
-          await installPackageAsync(`npm:${p.name}`);
+          await installPackageAsync(`npm:${p.name}@latest`);
         } catch {
-          // Individual package failure doesn't stop the rest
+          this.errorSources.set(p.source, "Update failed");
+          setTimeout(() => {
+            this.errorSources.delete(p.source);
+            this.invalidate();
+            this.requestRender();
+          }, 8000);
         }
       }
 
@@ -688,12 +672,6 @@ export class ManagerUI {
         break;
       }
 
-      case "versions": {
-        lines.push(...this.#renderVersions(width));
-
-        break;
-      }
-
       case "list": {
         if (this.tab === "installed") {
           lines.push(...this.#renderInstalled(width));
@@ -706,9 +684,10 @@ export class ManagerUI {
     lines.push("");
 
     // Status text
-    lines.push(...this.#renderStatus(width));
-
-    lines.push("");
+    if (this.view !== "confirm") {
+      lines.push(...this.#renderStatus(width));
+      lines.push("");
+    }
 
     // Keybinding hints
     const bindings = this.#renderBindings();
@@ -742,7 +721,7 @@ export class ManagerUI {
       return [this.#keyHint("y", "yes"), this.#keyHint("n/esc", "cancel")].join("  ");
     }
 
-    if (this.view === "details" || this.view === "versions") {
+    if (this.view === "details") {
       return this.#keyHint("esc", "back");
     }
 
@@ -760,15 +739,24 @@ export class ManagerUI {
       return parts.join("  ");
     }
 
-    return [this.#keyHint("type", "search"), this.#keyHint("esc", "close")].join("  ");
+    return [
+      this.#keyHint("type", "search"),
+      this.#keyHint("↑↓", "navigate"),
+      this.#keyHint("enter", "install"),
+      this.#keyHint("tab", "installed"),
+      this.#keyHint("esc", "close"),
+    ].join("  ");
   }
 
   // ── Confirmation view ─────────────────────────────────────────────────────
 
   #renderConfirm(_width: number): string[] {
+    const target = this.confirmInstallPkg
+      ? `install ${this.confirmInstallPkg.name}?`
+      : `remove ${this.confirmTarget}?`;
     return [
       "",
-      this.fg("warning", this.bold(` remove ${this.confirmTarget}?`)),
+      this.fg("warning", this.bold(` ${target}`)),
       "",
       this.fg("dim", " [y] Yes    [n] No"),
     ];
@@ -825,27 +813,6 @@ export class ManagerUI {
     return lines;
   }
 
-  // ── Versions view ─────────────────────────────────────────────────────────
-
-  #renderVersions(width: number): string[] {
-    if (this.detailsLoading) {
-      return ["", this.fg("dim", " Loading versions...")];
-    }
-
-    if (this.versions.length === 0) {
-      return ["", this.fg("dim", " No versions available.")];
-    }
-
-    const lines: string[] = [];
-    lines.push(this.fg("accent", " Select version to install"));
-    lines.push("");
-    if (this.versionList) {
-      lines.push(...this.versionList.render(width));
-    }
-
-    return lines;
-  }
-
   // ── Installed tab ─────────────────────────────────────────────────────────
 
   #renderInstalled(width: number): string[] {
@@ -867,28 +834,41 @@ export class ManagerUI {
     this.filteredPkgs = this.installedPkgs;
 
     const items: SelectItem[] = this.filteredPkgs.map((p) => {
+      const isRemoving = this.removingSource === p.source;
       const isUpdating = this.updatingSource === "*" || this.updatingSource === p.source;
       const isChecking = this.checkingVersions && p.type === "npm";
       const wasUpdated = this.justUpdatedSources.has(p.source);
-      const icon = wasUpdated
-        ? "✓"
-        : isUpdating || isChecking
-          ? "⏳"
-          : p.hasUpdate
-            ? "🔄"
-            : p.type === "npm"
-              ? "📦"
-              : p.type === "git"
-                ? "🔀"
-                : "📁";
+      const hasError = this.errorSources.has(p.source);
+      const icon = hasError
+        ? "❌"
+        : isRemoving
+          ? "✗"
+          : wasUpdated
+            ? "✓"
+            : isUpdating || isChecking
+              ? "⏳"
+              : p.hasUpdate
+                ? "🔄"
+                : p.type === "npm"
+                  ? "📦"
+                  : p.type === "git"
+                    ? "🔀"
+                    : "📁";
       const ver = resolveInstalledVersion(p);
       const desc = p.description || getCachedDescription(p.name) || p.type;
-      let text = `${ver} — ${desc}`;
-      if (p.hasUpdate && p.latestVersion) {
+      const errMsg = this.errorSources.get(p.source);
+      let text = errMsg ? `\u001B[31m${errMsg}\u001B[0m` : `${ver} — ${desc}`;
+      if (isRemoving) {
+        text = `\u001B[31mUninstalling...\u001B[0m`;
+      } else if (isUpdating) {
+        text = `\u001B[33mUpdating...\u001B[0m`;
+      } else if (errMsg) {
+        text = `\u001B[31m${errMsg}\u001B[0m`;
+      } else if (p.hasUpdate && p.latestVersion) {
         text = `${ver} → ${p.latestVersion} — ${desc}`;
       }
 
-      if (wasUpdated) {
+      if (wasUpdated && !isRemoving) {
         text = `\x1b[33m${ver}\x1b[0m — ${desc}`;
       }
 
@@ -908,17 +888,8 @@ export class ManagerUI {
 
   #renderSearch(width: number): string[] {
     const lines: string[] = [];
-    lines.push(this.fg("accent", ` 🔍 ${this.searchQuery}█`), "");
 
-    // Inline keybinding hints always visible
-    const hints = [
-      this.#keyHint("↑↓", "navigate"),
-      this.#keyHint("enter", "install"),
-      this.#keyHint("tab", "installed"),
-      this.#keyHint("esc", "close"),
-    ].join("  ");
-    lines.push(this.fg("dim", hints));
-    lines.push("");
+    lines.push(this.fg("accent", ` 🔍 ${this.searchQuery}█`), "");
 
     if (this.searchLoading) {
       lines.push(this.fg("dim", " Searching..."));
@@ -936,11 +907,38 @@ export class ManagerUI {
   }
 
   #buildSearchList(): SelectList {
-    const items: SelectItem[] = this.searchResults.map((r) => ({
-      value: r.npmPackage,
-      label: `📦 ${r.name}`,
-      description: `${r.version} — ${r.description.slice(0, 60)}`,
-    }));
+    const items: SelectItem[] = this.searchResults.map((r) => {
+      const errMsg = this.errorSources.get(r.npmPackage);
+      if (errMsg) {
+        return {
+          value: r.npmPackage,
+          label: `❌ ${r.name}`,
+          description: `\u001B[31m${errMsg}\u001B[0m`,
+        };
+      }
+
+      if (this.installingSearchPkg === r.npmPackage) {
+        if (this.busy) {
+          return {
+            value: r.npmPackage,
+            label: `⏳ ${r.name}`,
+            description: `\u001B[33mInstalling...\u001B[0m`,
+          };
+        }
+
+        return {
+          value: r.npmPackage,
+          label: `✓ ${r.name}`,
+          description: `\u001B[32mInstalled\u001B[0m`,
+        };
+      }
+
+      return {
+        value: r.npmPackage,
+        label: `📦 ${r.name}`,
+        description: `${r.version} — ${r.description.slice(0, 60)}`,
+      };
+    });
     const list = new SelectList(items, Math.min(items.length + 2, 20), this.selectListTheme());
     const prevIdx = this.#selectedIndex(this.searchList);
     if (this.searchList) {
@@ -960,6 +958,5 @@ export class ManagerUI {
     this.cachedLines = undefined;
     this.installedList?.invalidate();
     this.searchList?.invalidate();
-    this.versionList?.invalidate();
   }
 }

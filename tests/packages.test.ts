@@ -262,22 +262,24 @@ describe("buildInstalledItems", () => {
 describe("searchCatalog URL", () => {
   function buildUrl(query: string): string {
     const trimmed = query.trim();
-    const q = trimmed
-      ? `keywords:pi-package+${encodeURIComponent(trimmed)}`
-      : "keywords:pi-package";
-    return `https://registry.npmjs.org/-/v1/search?text=${q}&size=20`;
+    const q = trimmed ? `keywords:pi-package ${trimmed}` : "keywords:pi-package";
+    const params = new URLSearchParams({ text: q, size: "20" });
+    return `https://registry.npmjs.org/-/v1/search?${params}`;
   }
 
   test("empty query searches pi-package keyword", () => {
-    expect(buildUrl("")).toContain("keywords:pi-package");
+    const url = buildUrl("");
+    expect(url).toContain("keywords%3Api-package");
   });
 
-  test("with query adds search term", () => {
-    expect(buildUrl("test")).toContain("pi-package+test");
+  test("with query encodes space separator", () => {
+    const url = buildUrl("test");
+    expect(url).toContain("keywords%3Api-package+test");
   });
 
   test("trims whitespace", () => {
-    expect(buildUrl("  hello  ")).toContain("pi-package+hello");
+    const url = buildUrl("  hello  ");
+    expect(url).toContain("+hello");
   });
 });
 

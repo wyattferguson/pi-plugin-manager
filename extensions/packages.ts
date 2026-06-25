@@ -7,13 +7,11 @@
  @module pi-plugin-manager/packages
  */
 
-/* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return -- Pi/node built-in APIs */
-
 import { execSync, spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { Package, PackageDetails, SearchResult, VersionInfo } from "./types";
+import type { Package, PackageDetails, SearchResult } from "./types";
 
 // ── Paths ───────────────────────────────────────────────────────────────────
 
@@ -79,16 +77,6 @@ export function getCachedDescription(name: string): string | undefined {
   }
 
   return (entry.data as { description: string }).description;
-}
-
-export function clearPackageCache(name: string): void {
-  const store = readCache();
-  const npmKey = `npm:${name}`;
-  // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-  delete store[name];
-  // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-  delete store[npmKey];
-  writeCache(store);
 }
 
 // ── Package loading ─────────────────────────────────────────────────────────
@@ -183,7 +171,7 @@ function parseLocal(raw: string): Package {
 
 /** Resolve the installed version of a package from disk. */
 export function resolveInstalledVersion(pkg: Package): string {
-  if (pkg.version) {
+  if (pkg.version && pkg.version !== "latest") {
     return pkg.version;
   }
 
@@ -218,6 +206,18 @@ export function resolveInstalledVersion(pkg: Package): string {
   return "?";
 }
 
+// ── Version helpers ─────────────────────────────────────────────────────────
+
+/** Resolve the effective installed version, falling back to disk if "latest" or undefined. */
+function effectiveVersion(pkg: Package): string {
+  return pkg.version && pkg.version !== "latest" ? pkg.version : resolveInstalledVersion(pkg);
+}
+
+/** Check if an installed version differs from the latest, excluding sentinel values. */
+function hasUpdate(installedVer: string, latestVer: string): boolean {
+  return installedVer !== "?" && installedVer !== "local" && installedVer !== latestVer;
+}
+
 // ── Update checks ───────────────────────────────────────────────────────────
 
 /** Check npm registry for newer versions. Mutates packages in place. */
@@ -225,7 +225,7 @@ export async function checkNpmUpdates(pkgs: Package[]): Promise<void> {
   const cache = readCache();
   let dirty = false;
 
-  const results = await Promise.allSettled(
+  await Promise.allSettled(
     pkgs
       .filter((p) => p.type === "npm")
       .map(async (p) => {
@@ -239,9 +239,7 @@ export async function checkNpmUpdates(pkgs: Package[]): Promise<void> {
         if (cached) {
           p.latestVersion = cached.version;
           p.description = cached.description;
-          const installedVer = p.version ?? resolveInstalledVersion(p);
-          p.hasUpdate =
-            installedVer !== "?" && installedVer !== "local" && installedVer !== cached.version;
+          p.hasUpdate = hasUpdate(effectiveVersion(p), cached.version);
           return;
         }
 
@@ -259,9 +257,7 @@ export async function checkNpmUpdates(pkgs: Package[]): Promise<void> {
         };
         p.latestVersion = data.version;
         p.description = data.description ?? "";
-        const installedVer = p.version ?? resolveInstalledVersion(p);
-        p.hasUpdate =
-          installedVer !== "?" && installedVer !== "local" && installedVer !== data.version;
+        p.hasUpdate = hasUpdate(effectiveVersion(p), data.version);
 
         cacheSet(cache, key, {
           version: data.version,
@@ -270,7 +266,6 @@ export async function checkNpmUpdates(pkgs: Package[]): Promise<void> {
         dirty = true;
       }),
   );
-  void results;
   if (dirty) {
     writeCache(cache);
   }
@@ -336,7 +331,7 @@ export async function searchCatalog(
   signal?: AbortSignal,
 ): Promise<SearchResult[]> {
   const trimmed = query.trim();
-  const q = trimmed ? `keywords:pi-package ${encodeURIComponent(trimmed)}` : "keywords:pi-package";
+  const q = trimmed ? `keywords:pi-package ${trimmed}` : "keywords:pi-package";
 
   // Check cache for empty/popular query
   if (!trimmed) {
@@ -347,7 +342,8 @@ export async function searchCatalog(
     }
   }
 
-  const url = `https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(q)}&size=${size}`;
+  const params = new URLSearchParams({ text: q, size: String(size) });
+  const url = `https://registry.npmjs.org/-/v1/search?${params}`;
   const effectiveSignal = signal ?? AbortSignal.timeout(8000);
   try {
     const resp = await fetch(url, { signal: effectiveSignal });
@@ -382,14 +378,6 @@ export async function searchCatalog(
 
 // ── CLI operations ──────────────────────────────────────────────────────────
 
-export function installPackage(source: string): string {
-  return execSync(`pi install ${source}`, {
-    encoding: "utf8",
-    timeout: 120_000,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-}
-
 /** Run a pi CLI command asynchronously via spawn. */
 async function spawnPi(args: string[], timeout = 120_000): Promise<string> {
   return new Promise<string>((resolve, reject) => {
@@ -422,30 +410,9 @@ export async function installPackageAsync(source: string): Promise<string> {
   return spawnPi(["install", source]);
 }
 
-export function removePackage(source: string): string {
-  return execSync(`pi remove ${source}`, {
-    encoding: "utf8",
-    timeout: 60_000,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-}
-
 /** Remove a package asynchronously via spawn. */
 export async function removePackageAsync(source: string): Promise<string> {
   return spawnPi(["remove", source], 60_000);
-}
-
-export function updatePackage(source: string): string {
-  return execSync(`pi update --extension ${source}`, {
-    encoding: "utf8",
-    timeout: 120_000,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-}
-
-/** Update all extensions asynchronously via spawn. Returns stdout on success. */
-export async function updateAllExtensionsAsync(): Promise<string> {
-  return spawnPi(["update", "--extensions"], 300_000);
 }
 
 // ── Package details ─────────────────────────────────────────────────────────
@@ -497,29 +464,4 @@ export async function fetchPackageDetails(
       publishDate: data.time?.modified,
     };
   } catch {}
-}
-
-/** Fetch available versions for a package from the npm registry. */
-export async function fetchPackageVersions(
-  name: string,
-  signal?: AbortSignal,
-): Promise<VersionInfo[]> {
-  const effectiveSignal = signal ?? AbortSignal.timeout(5000);
-  try {
-    const resp = await fetch(`https://registry.npmjs.org/${encodeURIComponent(name)}`, {
-      signal: effectiveSignal,
-    });
-    if (!resp.ok) {
-      return [];
-    }
-
-    const data = (await resp.json()) as { versions?: Record<string, unknown> };
-    if (!data.versions) {
-      return [];
-    }
-
-    return Object.keys(data.versions).map((v) => ({ version: v }));
-  } catch {
-    return [];
-  }
 }

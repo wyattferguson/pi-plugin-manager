@@ -1,13 +1,15 @@
 {
   "$schema": "https://json.schemastore.org/package",
   "name": "pi-plugin-manager",
-  "version": "0.1.9",
+  "version": "0.2.0",
   "description": "Plugin manager for the pi agent harness",
   "keywords": [
+    "package-manager",
     "pi",
     "pi-extension",
     "pi-package",
-    "pi-plugin-manager"
+    "pi-plugin-manager",
+    "plugin-manager"
   ],
   "homepage": "https://github.com/wyattferguson/pi-plugin-manager#readme",
   "bugs": {
