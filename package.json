@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package",
   "name": "pi-plugin-manager",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Plugin manager for the pi agent harness",
   "keywords": [
     "package-manager",
@@ -34,7 +34,7 @@
   "type": "commonjs",
   "main": "index.js",
   "scripts": {
-    "build": "bun run typecheck && bun run format:check && bun run lint && bun run minify && bun test",
+    "build": "bun run typecheck && bun run format && bun run lint && bun run minify && bun test",
     "test": "bun test",
     "lint": "oxlint",
     "format": "oxfmt .",

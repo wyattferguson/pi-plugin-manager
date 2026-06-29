@@ -92,10 +92,13 @@ export function loadPackages(): Package[] {
       const global = JSON.parse(readFileSync(GLOBAL_SETTINGS, "utf8")).packages ?? [];
       for (const entry of global) {
         rawEntries.push(entry);
-        const key = typeof entry === "string" ? entry : (entry as { source?: string }).source ?? "";
+        const key =
+          typeof entry === "string" ? entry : ((entry as { source?: string }).source ?? "");
         if (key) seen.add(key);
       }
-    } catch { /* */ }
+    } catch {
+      /* */
+    }
   }
 
   // 2. Project packages override global (dedup by source string)
@@ -104,11 +107,12 @@ export function loadPackages(): Package[] {
     try {
       const project = JSON.parse(readFileSync(proj, "utf8")).packages ?? [];
       for (const entry of project) {
-        const key = typeof entry === "string" ? entry : (entry as { source?: string }).source ?? "";
+        const key =
+          typeof entry === "string" ? entry : ((entry as { source?: string }).source ?? "");
         // Project entry replaces global entry with same source
         if (key && seen.has(key)) {
           const idx = rawEntries.findIndex(
-            (e) => (typeof e === "string" ? e : (e as { source?: string }).source ?? "") === key,
+            (e) => (typeof e === "string" ? e : ((e as { source?: string }).source ?? "")) === key,
           );
           if (idx >= 0) rawEntries[idx] = entry;
         } else {
@@ -116,7 +120,9 @@ export function loadPackages(): Package[] {
           if (key) seen.add(key);
         }
       }
-    } catch { /* */ }
+    } catch {
+      /* */
+    }
   }
 
   const result: Package[] = [];

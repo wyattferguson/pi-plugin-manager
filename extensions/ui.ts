@@ -839,9 +839,7 @@ export class ManagerUI {
 
     lines.push("");
     if (this.tab === "search" && this.detailsSearchPkg) {
-      lines.push(
-        [this.#keyHint("enter", "install"), this.#keyHint("esc", "back")].join("  "),
-      );
+      lines.push([this.#keyHint("enter", "install"), this.#keyHint("esc", "back")].join("  "));
     } else {
       lines.push(this.fg("dim", " esc:back"));
     }
