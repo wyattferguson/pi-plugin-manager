@@ -65,6 +65,7 @@ export class ManagerUI {
   // Details
   private details: PackageDetails | undefined;
   private detailsLoading = false;
+  private detailsSearchPkg: SearchResult | undefined;
 
   // TUI components
   private installedList: SelectList | undefined;
@@ -166,6 +167,15 @@ export class ManagerUI {
     }
 
     if (this.view === "details") {
+      // Enter on search details installs the package
+      if (this.tab === "search" && this.detailsSearchPkg && matchesKey(data, "enter")) {
+        this.view = "list";
+        const pkg = this.detailsSearchPkg;
+        this.detailsSearchPkg = undefined;
+        void this.#doInstall(pkg);
+        return;
+      }
+
       // R/del/enter on details view triggers remove if viewing installed package
       if (
         this.tab === "installed" &&
@@ -182,6 +192,7 @@ export class ManagerUI {
       }
 
       this.view = "list";
+      this.detailsSearchPkg = undefined;
       this.invalidate();
       this.requestRender();
       return;
@@ -258,14 +269,8 @@ export class ManagerUI {
     }
 
     if (matchesKey(data, "enter")) {
-      const idx = this.#selectedIndex(this.searchList);
-      const result = this.searchResults[idx];
-      if (result) {
-        this.confirmInstallPkg = result;
-        this.view = "confirm";
-        this.invalidate();
-      }
-
+      // Enter on a search result opens details, not install
+      void this.#showSearchDetails();
       return;
     }
 
@@ -279,6 +284,8 @@ export class ManagerUI {
       return;
     }
 
+    // 'd' opens details when browsing results (not typing)
+    // Typing a printable char
     if (data.length === 1 && data.charCodeAt(0) >= 32 && data.charCodeAt(0) < 127) {
       this.searchQuery += data;
       this.#debounceSearch();
@@ -361,11 +368,26 @@ export class ManagerUI {
       return;
     }
 
+    void this.#fetchAndShowDetails(pkg.name);
+  }
+
+  async #showSearchDetails(): Promise<void> {
+    const idx = this.#selectedIndex(this.searchList);
+    const result = this.searchResults[idx];
+    if (!result) {
+      return;
+    }
+
+    this.detailsSearchPkg = result;
+    void this.#fetchAndShowDetails(result.npmPackage);
+  }
+
+  async #fetchAndShowDetails(name: string): Promise<void> {
     this.detailsLoading = true;
     this.view = "details";
     this.invalidate();
     try {
-      this.details = await fetchPackageDetails(pkg.name);
+      this.details = await fetchPackageDetails(name);
     } catch {
       this.details = undefined;
     }
@@ -691,7 +713,10 @@ export class ManagerUI {
 
     // Keybinding hints
     const bindings = this.#renderBindings();
-    lines.push(bindings);
+    if (bindings) {
+      lines.push(bindings);
+    }
+
     lines.push(this.fg("muted", "─".repeat(width)));
 
     // Pad with empty lines to fill the terminal height
@@ -722,6 +747,10 @@ export class ManagerUI {
     }
 
     if (this.view === "details") {
+      if (this.tab === "search" && this.detailsSearchPkg) {
+        return [this.#keyHint("enter", "install"), this.#keyHint("esc", "back")].join("  ");
+      }
+
       return this.#keyHint("esc", "back");
     }
 
@@ -742,7 +771,7 @@ export class ManagerUI {
     return [
       this.#keyHint("type", "search"),
       this.#keyHint("↑↓", "navigate"),
-      this.#keyHint("enter", "install"),
+      this.#keyHint("enter", "details"),
       this.#keyHint("tab", "installed"),
       this.#keyHint("esc", "close"),
     ].join("  ");
@@ -809,7 +838,14 @@ export class ManagerUI {
     }
 
     lines.push("");
-    lines.push(this.fg("dim", " esc:back"));
+    if (this.tab === "search" && this.detailsSearchPkg) {
+      lines.push(
+        [this.#keyHint("enter", "install"), this.#keyHint("esc", "back")].join("  "),
+      );
+    } else {
+      lines.push(this.fg("dim", " esc:back"));
+    }
+
     return lines;
   }
 

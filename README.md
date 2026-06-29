@@ -40,33 +40,6 @@ Run in Pi with:
 /plugins
 ```
 
-## Keybindings
-
-**Installed tab**
-
-| Key                   | Action                         |
-| --------------------- | ------------------------------ |
-| `↑↓`                  | Navigate list                  |
-| `PgUp` / `PgDn`       | Page up / down                 |
-| `Enter` / `r` / `Del` | Remove selected (with confirm) |
-| `u`                   | Update all packages            |
-| `i`                   | Show package details           |
-| `Tab`                 | Switch to search               |
-| `Esc`                 | Back / Close                   |
-
-**Search tab**
-
-| Key           | Action                    |
-| ------------- | ------------------------- |
-| `↑↓`          | Navigate results          |
-| `PgUp`/`PgDn` | Page up / down            |
-| `Enter`       | Install selected          |
-| `v`           | Choose version to install |
-| `i`           | Show package details      |
-| Type          | Search catalog            |
-| `Tab`         | Switch to installed       |
-| `Esc`         | Back / Close              |
-
 ## License
 
 [MIT license](https://github.com/wyattferguson/pi-plugin-manager/blob/master/LICENSE)

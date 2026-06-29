@@ -1,5 +1,6 @@
 node_modules/
 .pi/
+nul
 
 # Lockfiles (bun.lock is the source of truth)
 package-lock.json

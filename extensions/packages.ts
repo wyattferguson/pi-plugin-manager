@@ -81,37 +81,52 @@ export function getCachedDescription(name: string): string | undefined {
 
 // ── Package loading ─────────────────────────────────────────────────────────
 
-function settingsPath(): string {
-  const proj = join(process.cwd(), ".pi", "settings.json");
-  return existsSync(proj) ? proj : GLOBAL_SETTINGS;
-}
-
-/** Read installed packages from Pi's settings.json. */
+/** Merge packages from both global and project settings. Pi merges settings, so we must too. */
 export function loadPackages(): Package[] {
-  const sp = settingsPath();
-  if (!existsSync(sp)) {
-    return [];
+  const rawEntries: unknown[] = [];
+  const seen = new Set<string>();
+
+  // 1. Global packages first
+  if (existsSync(GLOBAL_SETTINGS)) {
+    try {
+      const global = JSON.parse(readFileSync(GLOBAL_SETTINGS, "utf8")).packages ?? [];
+      for (const entry of global) {
+        rawEntries.push(entry);
+        const key = typeof entry === "string" ? entry : (entry as { source?: string }).source ?? "";
+        if (key) seen.add(key);
+      }
+    } catch { /* */ }
   }
 
-  let raw: unknown[];
-  try {
-    raw = JSON.parse(readFileSync(sp, "utf8")).packages ?? [];
-  } catch {
-    return [];
+  // 2. Project packages override global (dedup by source string)
+  const proj = join(process.cwd(), ".pi", "settings.json");
+  if (existsSync(proj)) {
+    try {
+      const project = JSON.parse(readFileSync(proj, "utf8")).packages ?? [];
+      for (const entry of project) {
+        const key = typeof entry === "string" ? entry : (entry as { source?: string }).source ?? "";
+        // Project entry replaces global entry with same source
+        if (key && seen.has(key)) {
+          const idx = rawEntries.findIndex(
+            (e) => (typeof e === "string" ? e : (e as { source?: string }).source ?? "") === key,
+          );
+          if (idx >= 0) rawEntries[idx] = entry;
+        } else {
+          rawEntries.push(entry);
+          if (key) seen.add(key);
+        }
+      }
+    } catch { /* */ }
   }
 
   const result: Package[] = [];
-  for (const entry of raw) {
+  for (const entry of rawEntries) {
     if (typeof entry === "string") {
       const parsed = parseSource(entry);
-      if (parsed) {
-        result.push(parsed);
-      }
+      if (parsed) result.push(parsed);
     } else if (typeof entry === "object" && entry !== null && "source" in entry) {
       const parsed = parseSource((entry as { source: string }).source);
-      if (parsed) {
-        result.push(parsed);
-      }
+      if (parsed) result.push(parsed);
     }
   }
 
