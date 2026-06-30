@@ -392,7 +392,10 @@ export async function searchCatalog(
     }
 
     return results;
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw error;
+    }
     return [];
   }
 }

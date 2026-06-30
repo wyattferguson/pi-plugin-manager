@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/github/v/release/wyattferguson/pi-plugin-manager?style=flat-square&color=111111&label=release" alt="Release">
 </p>
 
-A terminal UI for managing Pi plugins — browse what's installed, search the catalog, install/remove/update, all without leaving the terminal.
+A TUI for managing Pi plugins — see what's installed, search the catalog, install and remove packages, and bulk-update everything that's out of date. All from one screen, all with keyboard shortcuts.
 
 <p align="center">
   <img src="assets/installed-screenshot.png" alt="Installed tab" width="600">
@@ -20,25 +20,59 @@ A terminal UI for managing Pi plugins — browse what's installed, search the ca
   <img src="assets/search-screenshot.png" alt="Search tab" width="600">
 </p>
 
-- **Browse / Install / Remove Plugins** — See and manage all your plugins from one place
-- **Search catalog** — Find and install plugins from Pi Package Catalog
-- **Update all** — One key (`u`) updates every outdated package
-- **Package details** — (`i`) shows description, author, downloads, publish date
-- **Version picker** — (`v`) pick specific plugin versions for maximum compatibility
-
-## Usage
-
-Install command:
+## Install
 
 ```bash
 pi install npm:pi-plugin-manager
 ```
 
-Run in Pi with:
+That's it. No config files, no API keys.
+
+## Why this exists
+
+Pi has a growing ecosystem of extensions, skills, and themes — everything from web search and subagent delegation to custom providers and status bars. But managing them has meant juggling `pi install`, `pi remove`, `pi list`, and `pi check-updates` commands across separate terminal sessions.
+
+This puts it all in one place. A single TUI that shows your installed plugins, checks for updates, lets you search the catalog, and handles installs and removals — all with keyboard shortcuts, no context-switching.
+
+## What you can do
+
+| Want                              | How                                                                                                               |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| See every plugin you've installed | Open the Installed tab — name, version, description, and type (📦 npm, 🔀 git, 📁 local) at a glance              |
+| Check for updates                 | Installed tab shows 🔄 on outdated packages and the version bump (`1.2.3 → 2.0.0`)                                |
+| Update everything outdated        | One key — `u` — updates all outdated npm packages in sequence                                                     |
+| Search the package catalog        | Switch to Search tab, type to find plugins on npm tagged with `pi-package`                                        |
+| Install something                 | Search results show name, version, and description. Hit Enter to see details, then Enter again to install         |
+| Remove a plugin                   | Arrow to it, press `r`, confirm with `y`. Done                                                                    |
+| See what a package is about       | `i` on any installed package opens a details panel with description, author, license, downloads, and publish date |
+| Pin a specific version            | Pick an exact version before installing instead of grabbing `latest`                                              |
+
+## Usage
+
+Open the manager with:
 
 ```bash
 /plugins
 ```
+
+### Keyboard reference
+
+| Key                 | Action                                                               |
+| ------------------- | -------------------------------------------------------------------- |
+| `↑` `↓`             | Navigate the list                                                    |
+| `Tab`               | Switch between Installed and Search tabs                             |
+| `Enter`             | Open details / confirm install (search) / confirm remove (installed) |
+| `r` / `Delete`      | Remove the selected package                                          |
+| `u`                 | Update all outdated packages                                         |
+| `i`                 | Show package details                                                 |
+| `v`                 | Pick a specific version (before install)                             |
+| `PageUp` `PageDown` | Jump 20 items at a time                                              |
+| `Escape`            | Go back / close the manager                                          |
+| `y` `n`             | Confirm or cancel an action                                          |
+
+## What about updates after install?
+
+The Installed tab checks npm for newer versions when it opens. Packages with updates show a 🔄 icon and the version bump. Press `u` to update everything — it installs `npm:name@latest` for each outdated package individually (which means pinned versions stay pinned).
 
 ## License
 

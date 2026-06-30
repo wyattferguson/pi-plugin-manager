@@ -9,7 +9,12 @@
  @module pi-plugin-manager/ui
  */
 
-import { type SelectItem, SelectList, matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
+import {
+  type SelectItem,
+  SelectList,
+  matchesKey,
+  truncateToWidth,
+} from "@earendil-works/pi-tui";
 import {
   loadPackages,
   checkNpmUpdates,
@@ -46,6 +51,8 @@ export class ManagerUI {
   private searchQuery = "";
 
   private searchLoading = false;
+  #searchIcon = "🔍";
+  #searchSpinner: ReturnType<typeof setInterval> | undefined;
   private statusMsg = "";
   private statusIcon = "";
   private statusType: "info" | "error" | "success" = "info";
@@ -168,7 +175,11 @@ export class ManagerUI {
 
     if (this.view === "details") {
       // Enter on search details installs the package
-      if (this.tab === "search" && this.detailsSearchPkg && matchesKey(data, "enter")) {
+      if (
+        this.tab === "search" &&
+        this.detailsSearchPkg &&
+        matchesKey(data, "enter")
+      ) {
         this.view = "list";
         const pkg = this.detailsSearchPkg;
         this.detailsSearchPkg = undefined;
@@ -286,7 +297,11 @@ export class ManagerUI {
 
     // 'd' opens details when browsing results (not typing)
     // Typing a printable char
-    if (data.length === 1 && data.charCodeAt(0) >= 32 && data.charCodeAt(0) < 127) {
+    if (
+      data.length === 1 &&
+      data.charCodeAt(0) >= 32 &&
+      data.charCodeAt(0) < 127
+    ) {
       this.searchQuery += data;
       this.#debounceSearch();
       this.invalidate();
@@ -414,19 +429,29 @@ export class ManagerUI {
   }
 
   async #doSearch(): Promise<void> {
+    const trimmed = this.searchQuery.trim();
+    // Skip API for 1-char queries — npm returns same popular results anyway
+    if (trimmed.length === 1) {
+      this.statusMsg = "Type more to search";
+      this.statusType = "info";
+      return;
+    }
+
     this.#searchAbort?.abort();
     this.#searchAbort = new AbortController();
     const { signal } = this.#searchAbort;
     this.searchLoading = true;
+    this.#startSearchSpinner();
     this.invalidate();
     try {
-      this.searchResults = await searchCatalog(this.searchQuery, 20, signal);
+      this.searchResults = await searchCatalog(this.searchQuery, 15, signal);
       this.installingSearchPkg = "";
       this.searchList = this.#buildSearchList();
-      this.statusMsg = `${this.searchResults.length} results`;
+      this.statusMsg = `${this.searchResults.length} results for "${this.searchQuery}"`;
       this.statusType = "info";
     } catch (error) {
       if ((error as Error).name === "AbortError") {
+        this.#stopSearchSpinner();
         return;
       }
 
@@ -435,8 +460,32 @@ export class ManagerUI {
     }
 
     this.searchLoading = false;
+    this.#stopSearchSpinner();
     this.invalidate();
     this.requestRender();
+  }
+
+  /** Animate the search input icon while loading. */
+  #startSearchSpinner(): void {
+    const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+    let i = 0;
+    this.#searchIcon = frames[0];
+    this.invalidate();
+    this.requestRender();
+    this.#searchSpinner = setInterval(() => {
+      i = (i + 1) % frames.length;
+      this.#searchIcon = frames[i];
+      this.invalidate();
+      this.requestRender();
+    }, 120);
+  }
+
+  #stopSearchSpinner(): void {
+    if (this.#searchSpinner !== undefined) {
+      clearInterval(this.#searchSpinner);
+      this.#searchSpinner = undefined;
+    }
+    this.#searchIcon = "🔍";
   }
 
   // ── Package operations ────────────────────────────────────────────────────
@@ -482,7 +531,9 @@ export class ManagerUI {
       await removePackageAsync(pkg.source);
       clearInterval(spinner);
       this.removingSource = "";
-      this.installedPkgs = this.installedPkgs.filter((p) => p.source !== pkg.source);
+      this.installedPkgs = this.installedPkgs.filter(
+        (p) => p.source !== pkg.source,
+      );
       this.installedList = this.#buildInstalledList();
       this.statusIcon = "✓";
       this.statusMsg = `Removed ${pkg.name}`;
@@ -512,7 +563,9 @@ export class ManagerUI {
       return;
     }
 
-    const source = version ? `npm:${result.npmPackage}@${version}` : `npm:${result.npmPackage}`;
+    const source = version
+      ? `npm:${result.npmPackage}@${version}`
+      : `npm:${result.npmPackage}`;
     this.busy = true;
     this.installingSearchPkg = result.npmPackage;
     this.searchList = this.#buildSearchList();
@@ -559,12 +612,17 @@ export class ManagerUI {
 
     this.busy = true;
     this.updatingSource = "*";
-    const oldPkgs = this.installedPkgs.map((p) => ({ ...p, _version: resolveInstalledVersion(p) }));
+    const oldPkgs = this.installedPkgs.map((p) => ({
+      ...p,
+      _version: resolveInstalledVersion(p),
+    }));
     const spinner = this.#startSpinner("Updating all packages");
 
     try {
       // Update each outdated package individually (handles pinned versions)
-      const toUpdate = this.installedPkgs.filter((p) => p.hasUpdate && p.type === "npm");
+      const toUpdate = this.installedPkgs.filter(
+        (p) => p.hasUpdate && p.type === "npm",
+      );
       for (const p of toUpdate) {
         this.statusMsg = `Updating ${p.name}`;
         this.invalidate();
@@ -653,7 +711,10 @@ export class ManagerUI {
       selectedIndex: number;
       filteredItems: unknown[];
     };
-    sl.selectedIndex = Math.min(sl.selectedIndex + max, sl.filteredItems.length - 1);
+    sl.selectedIndex = Math.min(
+      sl.selectedIndex + max,
+      sl.filteredItems.length - 1,
+    );
     this.invalidate();
   }
 
@@ -735,7 +796,11 @@ export class ManagerUI {
 
   #renderStatus(width: number): string[] {
     const color =
-      this.statusType === "error" ? "error" : this.statusType === "success" ? "success" : "accent";
+      this.statusType === "error"
+        ? "error"
+        : this.statusType === "success"
+          ? "success"
+          : "accent";
     const icon = this.statusIcon ? this.fg(color, this.statusIcon) : "";
     const text = this.fg("text", ` ${this.statusMsg}`);
     return [truncateToWidth(icon + text, width, "")];
@@ -743,12 +808,17 @@ export class ManagerUI {
 
   #renderBindings(): string {
     if (this.view === "confirm") {
-      return [this.#keyHint("y", "yes"), this.#keyHint("n/esc", "cancel")].join("  ");
+      return [this.#keyHint("y", "yes"), this.#keyHint("n/esc", "cancel")].join(
+        "  ",
+      );
     }
 
     if (this.view === "details") {
       if (this.tab === "search" && this.detailsSearchPkg) {
-        return [this.#keyHint("enter", "install"), this.#keyHint("esc", "back")].join("  ");
+        return [
+          this.#keyHint("enter", "install"),
+          this.#keyHint("esc", "back"),
+        ].join("  ");
       }
 
       return this.#keyHint("esc", "back");
@@ -829,17 +899,28 @@ export class ManagerUI {
     }
 
     if (d.downloads !== undefined) {
-      lines.push(this.fg("dim", ` Downloads (last month): ${d.downloads.toLocaleString()}`));
+      lines.push(
+        this.fg(
+          "dim",
+          ` Downloads (last month): ${d.downloads.toLocaleString()}`,
+        ),
+      );
     }
 
     if (d.publishDate) {
       const pubDate = new Date(d.publishDate);
-      lines.push(this.fg("dim", ` Last publish: ${pubDate.toLocaleDateString()}`));
+      lines.push(
+        this.fg("dim", ` Last publish: ${pubDate.toLocaleDateString()}`),
+      );
     }
 
     lines.push("");
     if (this.tab === "search" && this.detailsSearchPkg) {
-      lines.push([this.#keyHint("enter", "install"), this.#keyHint("esc", "back")].join("  "));
+      lines.push(
+        [this.#keyHint("enter", "install"), this.#keyHint("esc", "back")].join(
+          "  ",
+        ),
+      );
     } else {
       lines.push(this.fg("dim", " esc:back"));
     }
@@ -869,7 +950,8 @@ export class ManagerUI {
 
     const items: SelectItem[] = this.filteredPkgs.map((p) => {
       const isRemoving = this.removingSource === p.source;
-      const isUpdating = this.updatingSource === "*" || this.updatingSource === p.source;
+      const isUpdating =
+        this.updatingSource === "*" || this.updatingSource === p.source;
       const isChecking = this.checkingVersions && p.type === "npm";
       const wasUpdated = this.justUpdatedSources.has(p.source);
       const hasError = this.errorSources.has(p.source);
@@ -909,7 +991,11 @@ export class ManagerUI {
       return { value: p.source, label: `${icon} ${p.name}`, description: text };
     });
 
-    const list = new SelectList(items, Math.min(items.length + 2, 20), this.selectListTheme());
+    const list = new SelectList(
+      items,
+      Math.min(items.length + 2, 20),
+      this.selectListTheme(),
+    );
     const idx = this.#selectedIndex(this.installedList);
     if (idx < items.length) {
       (list as unknown as { selectedIndex: number }).selectedIndex = idx;
@@ -923,7 +1009,7 @@ export class ManagerUI {
   #renderSearch(width: number): string[] {
     const lines: string[] = [];
 
-    lines.push(this.fg("accent", ` 🔍 ${this.searchQuery}█`), "");
+    lines.push(this.fg("accent", ` ${this.#searchIcon} ${this.searchQuery}█`), "");
 
     if (this.searchLoading) {
       lines.push(this.fg("dim", " Searching..."));
@@ -973,7 +1059,11 @@ export class ManagerUI {
         description: `${r.version} — ${r.description.slice(0, 60)}`,
       };
     });
-    const list = new SelectList(items, Math.min(items.length + 2, 20), this.selectListTheme());
+    const list = new SelectList(
+      items,
+      Math.min(items.length + 2, 20),
+      this.selectListTheme(),
+    );
     const prevIdx = this.#selectedIndex(this.searchList);
     if (this.searchList) {
       (list as unknown as { selectedIndex: number }).selectedIndex = Math.min(
